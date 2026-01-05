@@ -1,5 +1,13 @@
 import subprocess
-import winreg
+import sys
+
+# Windows registry module is only available on Windows
+try:
+    import winreg
+    HAS_WINREG = True
+except ImportError:
+    HAS_WINREG = False
+
 class Utils:
     def read_file(self, file_path, nooflines=None, encoding='utf-8'):
         """
@@ -76,6 +84,9 @@ class Utils:
         Returns:
             str: Value from the registry
         """
+        if not HAS_WINREG:
+            return "Error: Registry access is only available on Windows"
+        
         try:
             registry_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key, 0, winreg.KEY_READ)
             value, regtype = winreg.QueryValueEx(registry_key, value_name)

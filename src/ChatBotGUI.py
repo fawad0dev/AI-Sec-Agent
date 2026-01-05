@@ -9,6 +9,13 @@ import re
 from pathlib import Path
 from datetime import datetime
 
+# Windows registry module is only available on Windows
+try:
+    import winreg
+    HAS_WINREG = True
+except ImportError:
+    HAS_WINREG = False
+
 app = Flask(__name__)
 
 # Initialize Ollama client
@@ -92,9 +99,10 @@ def build_log_scan_report() -> str:
 
 
 def _read_run_key(key_root, subkey):
+    if not HAS_WINREG:
+        return ["(Registry access not available on this platform)"]
+    
     try:
-        import winreg
-
         results = []
         with winreg.OpenKey(key_root, subkey) as k:
             index = 0
@@ -120,13 +128,15 @@ def _run_cmd_safe(command: str, limit: int = MAX_OUTPUT_CHARS) -> str:
 def build_system_health_report() -> str:
     parts = ["## Quick System Health Check (read-only)"]
 
-    parts.append("### Startup (Run keys)")
-    startup = []
-    import winreg
-
-    startup.extend(_read_run_key(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
-    startup.extend(_read_run_key(winreg.HKEY_CURRENT_USER, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
-    parts.append("\n".join(startup) if startup else "(no entries)")
+    if HAS_WINREG:
+        parts.append("### Startup (Run keys)")
+        startup = []
+        startup.extend(_read_run_key(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
+        startup.extend(_read_run_key(winreg.HKEY_CURRENT_USER, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
+        parts.append("\n".join(startup) if startup else "(no entries)")
+    else:
+        parts.append("### Startup (Run keys)")
+        parts.append("(Registry access not available on this platform)")
 
     parts.append("### Scheduled Tasks (summary)")
     parts.append(_run_cmd_safe("schtasks /query /fo LIST /v"))
