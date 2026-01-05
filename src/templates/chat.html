@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Security Agent - Chat</title>
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .controls label {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .controls select,
+        .controls button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .controls select {
+            background: white;
+            color: #333;
+            min-width: 200px;
+        }
+
+        .controls button {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: 500;
+        }
+
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .status {
+            margin-left: auto;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .status.connected {
+            background: rgba(76, 175, 80, 0.3);
+        }
+
+        .status.disconnected {
+            background: rgba(244, 67, 54, 0.3);
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .system-prompt-section {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .system-prompt-section h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .system-prompt-section textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .system-prompt-section button {
+            margin-top: 10px;
+            padding: 8px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .system-prompt-section button:hover {
+            background: #5568d3;
+        }
+
+        .chat-container {
+            flex: 1;
+            background: white;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            scroll-behavior: smooth;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-header {
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .message.user .message-header {
+            color: #2196F3;
+        }
+
+        .message.assistant .message-header {
+            color: #4CAF50;
+        }
+
+        .message.system .message-header {
+            color: #FF9800;
+        }
+
+        .message.error .message-header {
+            color: #f44336;
+        }
+
+        .message-content {
+            padding: 15px;
+            border-radius: 8px;
+            line-height: 1.6;
+        }
+
+        .message.user .message-content {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+        }
+
+        .message.assistant .message-content {
+            background: #ffffff;
+            border-left: 4px solid #4CAF50;
+            color: #1a1a1a;
+        }
+
+        .message.system .message-content {
+            background: #FFF3E0;
+            border-left: 4px solid #FF9800;
+            font-style: italic;
+            color: #6d4c00;
+        }
+
+        .message.error .message-content {
+            background: #FFEBEE;
+            border-left: 4px solid #f44336;
+            color: #c62828;
+        }
+
+        /* Markdown styling within messages */
+        .message-content.markdown-body {
+            background: transparent !important;
+            padding: 0 !important;
+            color: #1a1a1a !important;
+            font-size: 15px;
+        }
+
+        .message-content.markdown-body p {
+            color: #1a1a1a;
+            margin-bottom: 12px;
+        }
+
+        .message-content.markdown-body strong {
+            color: #000;
+            font-weight: 600;
+        }
+
+        .message-content.markdown-body h1,
+        .message-content.markdown-body h2,
+        .message-content.markdown-body h3 {
+            color: #000;
+            margin-top: 20px;
+            margin-bottom: 12px;
+        }
+
+        .message-content.markdown-body ul,
+        .message-content.markdown-body ol {
+            color: #1a1a1a;
+            margin-left: 20px;
+        }
+
+        .message-content.markdown-body li {
+            color: #1a1a1a;
+            margin-bottom: 5px;
+        }
+
+        .message-content.markdown-body pre {
+            background: #1e1e1e !important;
+            padding: 0 !important;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 12px 0;
+            position: relative;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+        }
+
+        .code-block-wrapper pre {
+            background: #1e1e1e !important;
+            padding: 40px 15px 15px 15px !important;
+            margin: 0 !important;
+            overflow-x: auto;
+        }
+
+        .code-block-wrapper code {
+            background: transparent !important;
+            color: #d4d4d4 !important;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .code-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #2d2d2d;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #3e3e3e;
+        }
+
+        .code-language {
+            color: #858585;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .copy-btn {
+            background: #404040;
+            border: none;
+            color: #d4d4d4;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .copy-btn:hover {
+            background: #505050;
+        }
+
+        .copy-btn.copied {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .message-content.markdown-body code {
+            background: #e8e8e8;
+            color: #c7254e;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        .message-content.markdown-body pre code {
+            background: transparent !important;
+            color: #d4d4d4 !important;
+            padding: 0;
+        }
+
+        .input-section {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            background: #fafafa;
+        }
+
+        .input-section textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: none;
+            min-height: 80px;
+            transition: border-color 0.3s;
+        }
+
+        .input-section textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .input-controls .hint {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .input-controls button {
+            padding: 10px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .input-controls button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .input-controls button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🔐 AI Security Agent</h1>
+        <div class="controls">
+            <label for="model-select">Model:</label>
+            <select id="model-select">
+                <option value="">Loading...</option>
+            </select>
+            <button onclick="refreshModels()">🔄 Refresh</button>
+            <button onclick="clearChat()">🗑️ Clear Chat</button>
+            <div class="status disconnected" id="status">⚠️ Checking...</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="system-prompt-section">
+            <h3>📋 System Prompt</h3>
+            <textarea
+                id="system-prompt">You are a cybersecurity expert AI assistant with access to the following tools:
+- read_file(path, nooflines=None, encoding='utf-8')
+- write_file(path, content, encoding='utf-8')
+- append_file(path, content, encoding='utf-8')
+- read_registry(key, value_name)
+- run_shell_command(command, allowed) — only set allowed: true after explicit user consent
+- scan_common_logs()
+- system_health_check()
+
+When you want tools executed, respond with a fenced JSON block using this shape:
+```agent
+{
+    "message": "Short user-facing summary",
+    "actions": [
+        {"tool": "read_file", "params": {"path": "C:/path/to/log.log", "nooflines": 200}},
+        {"tool": "system_health_check", "params": {}},
+        {"tool": "run_shell_command", "params": {"command": "netstat -ano", "allowed": true}}
+    ]
+}
+```
+Only include actions you want executed. Keep the summary concise. Ask before any destructive change or shell command. Analyze for vulnerabilities, suspicious persistence (registry run keys, startup apps, scheduled tasks), and network anomalies.</textarea>
+            <button onclick="setSystemPrompt()">Set System Prompt</button>
+        </div>
+
+        <div class="chat-container">
+            <div class="chat-messages" id="chat-messages">
+                <div class="message system">
+                    <div class="message-header">System</div>
+                    <div class="message-content">Welcome to AI Security Agent! Select a model and start chatting.</div>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <textarea id="user-input" placeholder="Type your message here..."
+                    onkeydown="handleKeyPress(event)"></textarea>
+                <div class="input-controls">
+                    <span class="hint">Press Ctrl+Enter to send</span>
+                    <button id="send-btn" onclick="sendMessage()">Send Message</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        marked.setOptions({
+            highlight: function (code, lang) {
+                return code;
+            },
+            breaks: true,
+            gfm: true
+        });
+
+        let currentModel = null;
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                const statusEl = document.getElementById('status');
+                const modelSelect = document.getElementById('model-select');
+
+                if (data.available && data.models.length > 0) {
+                    statusEl.className = 'status connected';
+                    statusEl.textContent = '✓ Connected';
+
+                    modelSelect.innerHTML = data.models.map(model =>
+                        `<option value="${model}">${model}</option>`
+                    ).join('');
+
+                    if (!currentModel && data.models.length > 0) {
+                        currentModel = data.models[0];
+                        modelSelect.value = currentModel;
+                        await setModel(currentModel);
+                    }
+                } else {
+                    statusEl.className = 'status disconnected';
+                    statusEl.textContent = '✗ Ollama not running';
+                    modelSelect.innerHTML = '<option value="">No models available</option>';
+                }
+            } catch (error) {
+                console.error('Status check failed:', error);
+            }
+        }
+
+        async function refreshModels() {
+            await checkStatus();
+        }
+
+        async function setModel(model) {
+            try {
+                await fetch('/api/set-model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model })
+                });
+                currentModel = model;
+                addMessage('system', `Switched to model: ${model}`);
+            } catch (error) {
+                console.error('Failed to set model:', error);
+            }
+        }
+
+        document.getElementById('model-select').addEventListener('change', (e) => {
+            if (e.target.value) {
+                setModel(e.target.value);
+            }
+        });
+
+        async function setSystemPrompt() {
+            const prompt = document.getElementById('system-prompt').value.trim();
+            if (!prompt) {
+                alert('System prompt cannot be empty');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/set-system', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+
+                if (response.ok) {
+                    addMessage('system', 'System prompt set successfully. Conversation history cleared.');
+                }
+            } catch (error) {
+                addMessage('error', `Failed to set system prompt: ${error.message}`);
+            }
+        }
+
+        async function clearChat() {
+            try {
+                await fetch('/api/clear', { method: 'POST' });
+                document.getElementById('chat-messages').innerHTML = '';
+                addMessage('system', 'Chat cleared');
+            } catch (error) {
+                console.error('Failed to clear chat:', error);
+            }
+        }
+
+        function addMessage(role, content) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'message-header';
+            headerDiv.textContent = role === 'user' ? 'You' :
+                role === 'assistant' ? 'Assistant' :
+                    role === 'system' ? 'System' : 'Error';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            if (role === 'assistant') {
+                contentDiv.className += ' markdown-body';
+                const html = marked.parse(content);
+                contentDiv.innerHTML = DOMPurify.sanitize(html);
+
+                // Add copy buttons to code blocks
+                setTimeout(() => {
+                    const codeBlocks = contentDiv.querySelectorAll('pre');
+                    codeBlocks.forEach((pre, index) => {
+                        const code = pre.querySelector('code');
+                        const codeText = code ? code.textContent : pre.textContent;
+
+                        // Get language if specified
+                        const language = code ? (code.className.match(/language-(\w+)/) || ['', 'code'])[1] : 'code';
+
+                        // Wrap pre in a div with header
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'code-block-wrapper';
+
+                        const header = document.createElement('div');
+                        header.className = 'code-header';
+
+                        const langSpan = document.createElement('span');
+                        langSpan.className = 'code-language';
+                        langSpan.textContent = language;
+
+                        const copyBtn = document.createElement('button');
+                        copyBtn.className = 'copy-btn';
+                        copyBtn.innerHTML = '📋 Copy';
+                        copyBtn.onclick = () => copyCode(codeText, copyBtn);
+
+                        header.appendChild(langSpan);
+                        header.appendChild(copyBtn);
+
+                        pre.parentNode.insertBefore(wrapper, pre);
+                        wrapper.appendChild(header);
+                        wrapper.appendChild(pre);
+                    });
+                }, 0);
+            } else {
+                contentDiv.textContent = content;
+            }
+
+            messageDiv.appendChild(headerDiv);
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function copyCode(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.innerHTML;
+                button.innerHTML = '✓ Copied!';
+                button.classList.add('copied');
+
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                button.innerHTML = '✗ Failed';
+                setTimeout(() => {
+                    button.innerHTML = '📋 Copy';
+                }, 2000);
+            });
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            if (!currentModel) {
+                alert('Please select a model first');
+                return;
+            }
+
+            const sendBtn = document.getElementById('send-btn');
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<span class="loading"></span> Processing...';
+
+            input.value = '';
+            addMessage('user', message);
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    addMessage('assistant', data.response);
+                } else {
+                    addMessage('error', data.error || 'Unknown error occurred');
+                }
+            } catch (error) {
+                addMessage('error', `Error: ${error.message}`);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send Message';
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.ctrlKey && event.key === 'Enter') {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // Initialize
+        checkStatus();
+    </script>
+</body>
+
+</html>
