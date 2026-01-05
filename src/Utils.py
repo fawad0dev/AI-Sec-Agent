@@ -1,7 +1,7 @@
 import subprocess
 import winreg
 class Utils:
-    def read_file(self, file_path, nooflines=None,encoding='utf-8'):
+    def read_file(self, file_path, nooflines=None, encoding='utf-8'):
         """
         Read and return text content from a file.
 
@@ -52,7 +52,7 @@ class Utils:
         except Exception as e:
             return (f"Error appending to file: {e}")
 
-    def run_shell_command(self, command,allowed=False):
+    def run_shell_command(self, command, allowed=False):
         """
         Execute a shell command and return its output.
 
