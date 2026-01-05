@@ -1,7 +1,7 @@
 import requests
 import json
 from typing import List, Dict, Optional
-class OllamaClient:    
+class OllamaClient:
     def __init__(self, base_url: str = "http://localhost:11434"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
