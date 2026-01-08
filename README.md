@@ -214,10 +214,6 @@ This is an open-source security tool. Contributions welcome for:
 - Support for more log formats
 - Cross-platform enhancements
 
-## License
-
-[Your License Here]
-
 ## Acknowledgments
 
 - Powered by Ollama for local LLM inference
