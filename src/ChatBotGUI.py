@@ -17,6 +17,9 @@ try:
 except ImportError:
     HAS_WINREG = False
 
+# Cache the OS type to avoid repeated system calls
+OS_TYPE = platform.system()
+
 app = Flask(__name__)
 
 # Initialize Ollama client
@@ -111,9 +114,7 @@ def _collect_logs() -> list:
     Collect log files from OS-specific locations.
     Detects OS type and uses appropriate log directories.
     """
-    os_type = platform.system()
-    
-    if os_type == "Windows":
+    if OS_TYPE == "Windows":
         # Windows log directories
         log_dirs = [
             Path(r"C:\\Windows\\Logs"),
@@ -122,7 +123,7 @@ def _collect_logs() -> list:
             Path(os.getenv("ProgramData", r"C:\\ProgramData")),
             Path.home() / "AppData/Local/Temp",
         ]
-    elif os_type == "Linux":
+    elif OS_TYPE == "Linux":
         # Linux log directories
         log_dirs = [
             Path("/var/log"),
@@ -131,7 +132,7 @@ def _collect_logs() -> list:
             Path("/tmp"),
             Path.home() / ".local/share",
         ]
-    elif os_type == "Darwin":  # macOS
+    elif OS_TYPE == "Darwin":  # macOS
         # macOS log directories
         log_dirs = [
             Path("/var/log"),
@@ -253,11 +254,10 @@ def build_system_health_report() -> str:
     Build a system health report using OS-specific commands.
     Detects OS type and uses appropriate commands for each platform.
     """
-    os_type = platform.system()
-    parts = [f"## System Health Check Report (OS: {os_type})"]
+    parts = [f"## System Health Check Report (OS: {OS_TYPE})"]
 
     # Startup Programs - OS specific
-    if os_type == "Windows" and HAS_WINREG:
+    if OS_TYPE == "Windows" and HAS_WINREG:
         parts.append("\n### Startup Programs (Registry Run Keys)")
         startup = []
         startup.extend(_read_run_key(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
@@ -267,12 +267,12 @@ def build_system_health_report() -> str:
                 parts.append(f"  - {item}")
         else:
             parts.append("  (no entries found)")
-    elif os_type == "Linux":
+    elif OS_TYPE == "Linux":
         parts.append("\n### Startup Programs (systemd services)")
         parts.append("```")
         parts.append(_run_cmd_safe("systemctl list-unit-files --type=service --state=enabled"))
         parts.append("```")
-    elif os_type == "Darwin":  # macOS
+    elif OS_TYPE == "Darwin":  # macOS
         parts.append("\n### Startup Programs (Launch Agents/Daemons)")
         parts.append("```")
         parts.append(_run_cmd_safe("launchctl list"))
@@ -284,14 +284,14 @@ def build_system_health_report() -> str:
     # Scheduled Tasks - OS specific
     parts.append("\n### Scheduled Tasks")
     parts.append("```")
-    if os_type == "Windows":
+    if OS_TYPE == "Windows":
         parts.append(_run_cmd_safe("schtasks /query /fo LIST /v"))
-    elif os_type == "Linux":
+    elif OS_TYPE == "Linux":
         # Check cron jobs
         parts.append(_run_cmd_safe("crontab -l 2>/dev/null || echo 'No crontab for current user'"))
         parts.append("\n### System-wide cron jobs:")
         parts.append(_run_cmd_safe("ls -la /etc/cron* 2>/dev/null || echo 'Cannot access cron directories'"))
-    elif os_type == "Darwin":  # macOS
+    elif OS_TYPE == "Darwin":  # macOS
         parts.append(_run_cmd_safe("crontab -l 2>/dev/null || echo 'No crontab for current user'"))
     else:
         parts.append("(Scheduled tasks listing not available for this OS)")
@@ -300,9 +300,9 @@ def build_system_health_report() -> str:
     # Active Network Connections - OS specific
     parts.append("\n### Active Network Connections")
     parts.append("```")
-    if os_type == "Windows":
+    if OS_TYPE == "Windows":
         parts.append(_run_cmd_safe("netstat -ano"))
-    elif os_type in ["Linux", "Darwin"]:
+    elif OS_TYPE in ["Linux", "Darwin"]:
         # Try netstat, fallback to ss on Linux
         netstat_output = _run_cmd_safe("netstat -tuln 2>/dev/null || ss -tuln")
         parts.append(netstat_output)
@@ -313,9 +313,9 @@ def build_system_health_report() -> str:
     # Running Processes - OS specific
     parts.append("\n### Running Processes")
     parts.append("```")
-    if os_type == "Windows":
+    if OS_TYPE == "Windows":
         parts.append(_run_cmd_safe("tasklist"))
-    elif os_type in ["Linux", "Darwin"]:
+    elif OS_TYPE in ["Linux", "Darwin"]:
         parts.append(_run_cmd_safe("ps aux"))
     else:
         parts.append("(Process listing not available for this OS)")

@@ -11,7 +11,14 @@ except ImportError:
     HAS_WINREG = False
     winreg = None  # Set to None to avoid NameError
 
+# Cache the OS type to avoid repeated system calls
+OS_TYPE = platform.system()
+
 class Utils:
+    def __init__(self):
+        """Initialize Utils with cached OS type."""
+        self.os_type = OS_TYPE
+    
     def get_system_info(self):
         """
         Get system information.
@@ -113,14 +120,11 @@ class Utils:
         if not allowed:
             return "Cancelled By User"
         
-        # Detect OS type before execution
-        os_type = platform.system()
-        
         try:
             result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             return result.stdout
         except subprocess.CalledProcessError as e:
-            return f"Error executing command '{command}' on {os_type}: {e.stderr}"
+            return f"Error executing command '{command}' on {self.os_type}: {e.stderr}"
     def read_Registry(self, key, value_name):
         """
         Read a value from the Windows Registry.
