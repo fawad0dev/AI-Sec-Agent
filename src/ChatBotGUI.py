@@ -41,9 +41,7 @@ defaultSystemPrompt="""You are a cybersecurity expert AI assistant specialized i
 
 **AVAILABLE TOOLS:**
 1. get_system_info - Get OS/CPU/RAM information (params: {})
-2. terminal_command - Execute shell commands (params: {"command": "...", "allowed": true})
-3. scan_common_logs - Scan and analyze system logs (params: {})
-4. system_health_check - Check startup programs, tasks, and network (params: {})
+2. terminal_command - Execute shell commands based on operating system (params: {"command": "...", "allowed": true})
 
 **YOUR WORKFLOW:**
 1. When asked to do something, immediately identify which tool to use
@@ -55,10 +53,8 @@ defaultSystemPrompt="""You are a cybersecurity expert AI assistant specialized i
    - Action items if issues are detected
 
 **TOOL SELECTION GUIDE:**
-- "logs", "log files", "read logs", "scan logs" → use scan_common_logs
-- "run command", "execute", "check file/directory", "list processes" → use terminal_command
+- "run command", "execute", "check file/directory", "list processes", "etc" → use terminal_command
 - "system info", "OS details", "CPU", "RAM", "hardware" → use get_system_info
-- "startup programs", "scheduled tasks", "network connections" → use system_health_check
 
 **OUTPUT FORMAT FOR TOOL EXECUTION:**
 When you need a tool, respond with ONLY this (no other text before or after):
@@ -84,6 +80,7 @@ Specific actions to take
 **CRITICAL RULES:**
 - NEVER just explain what you could do - DO IT immediately
 - NEVER ask permission to use tools - use them
+- NEVER make up answers - if data is insufficient, state that clearly
 - ALWAYS analyze results thoroughly - don't just repeat raw data
 - ALWAYS provide actionable recommendations
 - For log analysis, look for: failed logins, errors, unusual access patterns, privilege escalations
@@ -109,239 +106,12 @@ def _safe_tail(path: Path, max_lines: int = 200, max_bytes: int = 2_000_000) -> 
         return f"(error reading file: {exc})"
 
 
-def _collect_logs() -> list:
-    """
-    Collect log files from OS-specific locations.
-    Detects OS type and uses appropriate log directories.
-    """
-    if OS_TYPE == "Windows":
-        # Windows log directories
-        log_dirs = [
-            Path(r"C:\\Windows\\Logs"),
-            Path(r"C:\\Windows\\System32\\winevt\\Logs"),
-            Path(r"C:\\Windows\\Temp"),
-            Path(os.getenv("ProgramData", r"C:\\ProgramData")),
-            Path.home() / "AppData/Local/Temp",
-        ]
-        log_files = []  # Windows doesn't have standard log files to check
-    elif OS_TYPE == "Linux":
-        # Linux log directories
-        log_dirs = [
-            Path("/var/log"),
-            Path("/tmp"),
-            Path.home() / ".local/share",
-        ]
-        # Specific log files to check
-        log_files = [
-            Path("/var/log/syslog"),
-            Path("/var/log/auth.log"),
-        ]
-    elif OS_TYPE == "Darwin":  # macOS
-        # macOS log directories
-        log_dirs = [
-            Path("/var/log"),
-            Path("/Library/Logs"),
-            Path.home() / "Library/Logs",
-            Path("/tmp"),
-        ]
-        log_files = []  # macOS doesn't have standard log files to check
-    else:
-        # Fallback for other Unix-like systems
-        log_dirs = [
-            Path("/var/log"),
-            Path("/tmp"),
-            Path.home() / ".local/share",
-        ]
-        log_files = []
-
-    found = []
-    
-    # First, add specific log files if they exist
-    for log_file in log_files:
-        if log_file.exists() and log_file.is_file():
-            try:
-                info = log_file.stat()
-                found.append({
-                    "path": str(log_file),
-                    "size": info.st_size,
-                    "mtime": datetime.fromtimestamp(info.st_mtime),
-                })
-            except OSError:
-                continue
-    
-    # Then walk through directories
-    for base in log_dirs:
-        if not base.exists() or not base.is_dir():
-            continue
-        try:
-            for root, _, files in os.walk(base):
-                for name in files:
-                    path = Path(root) / name
-                    try:
-                        info = path.stat()
-                        found.append({
-                            "path": str(path),
-                            "size": info.st_size,
-                            "mtime": datetime.fromtimestamp(info.st_mtime),
-                        })
-                    except OSError:
-                        continue
-        except OSError:
-            continue
-    found.sort(key=lambda x: x["mtime"], reverse=True)
-    return found[:8]
-
-
-def build_log_scan_report() -> str:
-    logs = _collect_logs()
-    if not logs:
-        return "No logs found in standard locations."
-
-    parts = ["## Log Scan Report"]
-    parts.append(f"Found {len(logs)} recent log files for analysis\n")
-    
-    for idx, entry in enumerate(logs, 1):
-        path = entry["path"]
-        size = _human_size(entry["size"])
-        mtime = entry["mtime"].strftime("%Y-%m-%d %H:%M:%S")
-        parts.append(f"### Log File {idx}: {path}")
-        parts.append(f"- **Size**: {size}")
-        parts.append(f"- **Last Modified**: {mtime}")
-
-        if path.lower().endswith((".log", ".txt")):
-            tail = _safe_tail(Path(path))
-            if tail:
-                parts.append("\n**Content Preview (last 200 lines):**")
-                parts.append("```")
-                parts.append(tail.strip()[:MAX_OUTPUT_CHARS])
-                parts.append("```")
-            else:
-                parts.append("(empty or unreadable)")
-        else:
-            parts.append("(binary file - metadata only)")
-        parts.append("")  # blank line between logs
-    
-    parts.append("\n---")
-    parts.append("**Analysis Instructions**: Review the logs above for:")
-    parts.append("- Authentication failures or suspicious login attempts")
-    parts.append("- Error messages or system crashes")
-    parts.append("- Unusual access patterns or privilege escalations")
-    parts.append("- Resource issues (disk space, memory errors)")
-    parts.append("- Security warnings or critical events")
-    
-    return "\n".join(parts)
-
-
-def _read_run_key(key_root, subkey):
-    if not HAS_WINREG:
-        return ["(Registry access not available on this platform)"]
-    
-    try:
-        results = []
-        # winreg is guaranteed to be available here due to HAS_WINREG check above
-        with winreg.OpenKey(key_root, subkey) as k:
-            index = 0
-            while True:
-                try:
-                    name, value, _ = winreg.EnumValue(k, index)
-                    results.append(f"{name} => {value}")
-                    index += 1
-                except OSError:
-                    break
-        return results
-    except Exception as exc:  # pragma: no cover
-        return [f"(error reading {subkey}: {exc})"]
-
-
 def _run_cmd_safe(command: str, limit: int = MAX_OUTPUT_CHARS) -> str:
+    print(f"Executing command: {command}")
     output = utils.run_terminal_command(command, allowed=True)
     if not output:
         return "(no output)"
     return output[:limit]
-
-
-def build_system_health_report() -> str:
-    """
-    Build a system health report using OS-specific commands.
-    Detects OS type and uses appropriate commands for each platform.
-    """
-    parts = [f"## System Health Check Report (OS: {OS_TYPE})"]
-
-    # Startup Programs - OS specific
-    if OS_TYPE == "Windows" and HAS_WINREG:
-        parts.append("\n### Startup Programs (Registry Run Keys)")
-        startup = []
-        startup.extend(_read_run_key(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
-        startup.extend(_read_run_key(winreg.HKEY_CURRENT_USER, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
-        if startup:
-            for item in startup:
-                parts.append(f"  - {item}")
-        else:
-            parts.append("  (no entries found)")
-    elif OS_TYPE == "Linux":
-        parts.append("\n### Startup Programs (systemd services)")
-        parts.append("```")
-        parts.append(_run_cmd_safe("systemctl list-unit-files --type=service --state=enabled"))
-        parts.append("```")
-    elif OS_TYPE == "Darwin":  # macOS
-        parts.append("\n### Startup Programs (Launch Agents/Daemons)")
-        parts.append("```")
-        parts.append(_run_cmd_safe("launchctl list"))
-        parts.append("```")
-    else:
-        parts.append("\n### Startup Programs")
-        parts.append("  (Startup program listing not available for this OS)")
-
-    # Scheduled Tasks - OS specific
-    parts.append("\n### Scheduled Tasks")
-    parts.append("```")
-    if OS_TYPE == "Windows":
-        parts.append(_run_cmd_safe("schtasks /query /fo LIST /v"))
-    elif OS_TYPE in ["Linux", "Darwin"]:
-        # Check cron jobs (same for Linux and macOS)
-        parts.append(_run_cmd_safe("crontab -l 2>/dev/null || echo 'No crontab for current user'"))
-        if OS_TYPE == "Linux":
-            # Linux-specific: also check system-wide cron jobs
-            parts.append("\n### System-wide cron jobs:")
-            parts.append(_run_cmd_safe("ls -la /etc/cron* 2>/dev/null || echo 'Cannot access cron directories'"))
-    else:
-        parts.append("(Scheduled tasks listing not available for this OS)")
-    parts.append("```")
-
-    # Active Network Connections - OS specific
-    parts.append("\n### Active Network Connections")
-    parts.append("```")
-    if OS_TYPE == "Windows":
-        parts.append(_run_cmd_safe("netstat -ano"))
-    elif OS_TYPE in ["Linux", "Darwin"]:
-        # Try netstat, fallback to ss on Linux
-        netstat_output = _run_cmd_safe("netstat -tuln 2>/dev/null || ss -tuln")
-        parts.append(netstat_output)
-    else:
-        parts.append("(Network connections listing not available for this OS)")
-    parts.append("```")
-
-    # Running Processes - OS specific
-    parts.append("\n### Running Processes")
-    parts.append("```")
-    if OS_TYPE == "Windows":
-        parts.append(_run_cmd_safe("tasklist"))
-    elif OS_TYPE in ["Linux", "Darwin"]:
-        parts.append(_run_cmd_safe("ps aux"))
-    else:
-        parts.append("(Process listing not available for this OS)")
-    parts.append("```")
-
-    parts.append("\n---")
-    parts.append("**Analysis Instructions**: Review the system health data above for:")
-    parts.append("- Unknown or suspicious startup programs")
-    parts.append("- Unusual scheduled tasks")
-    parts.append("- Unexpected network connections to unknown IPs")
-    parts.append("- High resource usage processes")
-    parts.append("- Processes with unusual names or locations")
-    
-    return "\n".join(parts)
-
 
 def extract_action_payload(text: str):
     
@@ -371,15 +141,6 @@ def execute_actions(actions: list) -> list:
         tool = action.get("tool")
         params = action.get("params", {}) if isinstance(action, dict) else {}
         try:
-            """if tool == "read_file":
-                result = utils.read_file(params.get("path", ""), params.get("nooflines"), params.get("encoding", "utf-8"))
-            elif tool == "write_file":
-                result = utils.write_file(params.get("path", ""), params.get("content", ""), params.get("encoding", "utf-8"))
-            elif tool == "append_file":
-                result = utils.append_file(params.get("path", ""), params.get("content", ""), params.get("encoding", "utf-8"))
-            elif tool == "read_registry":
-                result = utils.read_Registry(params.get("key", ""), params.get("value_name", ""))
-            el"""
             if tool == "get_system_info":
                 result = utils.get_system_info()
             elif tool == "terminal_command":
@@ -387,10 +148,6 @@ def execute_actions(actions: list) -> list:
                     result = utils.run_terminal_command(params.get("command", ""), allowed=True)
                 else:
                     result = "Blocked: allowed flag not set to true."
-            elif tool == "scan_common_logs":
-                result = build_log_scan_report()
-            elif tool == "system_health_check":
-                result = build_system_health_report()
             else:
                 result = f"Unknown tool: {tool}"
         except Exception as exc:  # pragma: no cover
@@ -528,6 +285,7 @@ def chat():
 
         # Let the model drive tool choices; parse any declared actions
         action_payload = extract_action_payload(response_text)
+        print(f"Extracted action payload: {action_payload}")
         final_response = response_text
         
         if action_payload and isinstance(action_payload, dict):

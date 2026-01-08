@@ -11,7 +11,7 @@ class OllamaClient:
         try:
             response = requests.get(f"{self.base_url}/", timeout=2)
             return response.status_code == 200
-        except:
+        except (requests.RequestException, ConnectionError, TimeoutError):
             return False
     
     def list_models(self) -> List[Dict]:

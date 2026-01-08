@@ -2,6 +2,7 @@ import subprocess
 import sys
 import platform
 import psutil
+import winreg
 
 # Windows registry module is only available on Windows
 try:
@@ -50,7 +51,7 @@ class Utils:
             result = subprocess.run(['ping', '-n' if platform.system() == 'Windows' else '-c', '1', '8.8.8.8'], 
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
             return result.returncode == 0
-        except Exception:
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
             return False
 
     def read_file(self, file_path, nooflines=None, encoding='utf-8'):
@@ -103,7 +104,12 @@ class Utils:
             return "Appended Successfully"
         except Exception as e:
             return (f"Error appending to file: {e}")
-
+    def is_admin(self):
+        try:
+            import ctypes
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except (AttributeError, OSError):
+            return False
     def run_terminal_command(self, command, allowed=False):
         """
         Execute a shell command and return its output.
@@ -119,52 +125,86 @@ class Utils:
         if not allowed:
             return "Cancelled By User"
         
-        try:
-            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return result.stdout
-        except subprocess.CalledProcessError as e:
-            return f"Error executing command '{command}' on {self.os_type}: {e.stderr}"
-    def read_Registry(self, key, value_name):
-        """
-        Read a value from the Windows Registry.
-
-        Args:
-            key (str): Registry key path
-            value_name (str): Name of the value to read
-        Returns:
-            str: Value from the registry
-        """
-        if not HAS_WINREG:
-            return "Error: Registry access is only available on Windows"
+        if not command or not isinstance(command, str):
+            return "Error: Invalid command"
+        
+        # Basic validation - prevent obviously dangerous patterns
+        dangerous_patterns = ['rm -rf /', 'del /f /s /q', 'format ', 'mkfs', ':(){:|:&};:']
+        for pattern in dangerous_patterns:
+            if pattern in command.lower():
+                return f"Error: Command blocked for security reasons"
         
         try:
-            registry_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key, 0, winreg.KEY_READ)
-            value, regtype = winreg.QueryValueEx(registry_key, value_name)
-            winreg.CloseKey(registry_key)
-            return value
+            # Use timeout to prevent hanging
+            result = subprocess.run(
+                command, 
+                shell=True, 
+                check=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, 
+                text=True,
+                timeout=30
+            )
+            return result.stdout
+        except subprocess.TimeoutExpired:
+            return f"Error: Command timed out after 30 seconds"
+        except subprocess.CalledProcessError as e:
+            return f"Error executing command '{command}' on {self.os_type}: {e.stderr}"
         except Exception as e:
-            return f"Error reading registry: {e}"
-    def write_Registry(self, key, value_name, value, value_type=None):
+            return f"Error: {str(e)}"
+    def read_Registry(self, key, sub_key, reserved=0, access=winreg.KEY_READ):
+        """
+        Read Windows Registry key values.
+
+        Args:
+            key: Root registry key (e.g., winreg.HKEY_LOCAL_MACHINE)
+            sub_key (str): Subkey path
+            reserved (int): Reserved parameter (default is 0)
+            access (int): Access rights (default is winreg.KEY_READ)
+
+        Returns:
+            list: List of registry values in "name: value" format
+        """
+        if not HAS_WINREG:
+            return ["Error: winreg module not available on this platform."]
+        
+        values = []
+        try:
+            with winreg.OpenKey(key, sub_key, reserved, access) as reg_key:
+                i = 0
+                while True:
+                    try:
+                        value = winreg.EnumValue(reg_key, i)
+                        values.append(f"{value[0]}: {value[1]}")
+                        i += 1
+                    except OSError:
+                        break
+        except FileNotFoundError:
+            values.append(f"Error: Registry key '{sub_key}' not found.")
+        except Exception as e:
+            values.append(f"Error reading registry: {e}")
+        
+        return values
+    def write_Registry(self, key, sub_key, value_name, value, value_type=winreg.REG_SZ):
         """
         Write a value to the Windows Registry.
 
         Args:
-            key (str): Registry key path
-            value_name (str): Name of the value to write
-            value: Value to write
-            value_type: Type of the registry value (default is REG_SZ if available)
+            key: Root registry key (e.g., winreg.HKEY_LOCAL_MACHINE)
+            sub_key (str): Subkey path
+            value_name (str): Name of the registry value
+            value: Value to set
+            value_type: Type of the registry value (default is winreg.REG_SZ)
+
+        Returns:
+            str: Success or error message
         """
         if not HAS_WINREG:
-            return "Error: Registry access is only available on Windows"
-        
-        # Set default value_type only if winreg is available
-        if value_type is None:
-            value_type = winreg.REG_SZ
+            return "Error: winreg module not available on this platform."
         
         try:
-            registry_key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key)
-            winreg.SetValueEx(registry_key, value_name, 0, value_type, value)
-            winreg.CloseKey(registry_key)
-            return "Registry updated successfully"
+            with winreg.CreateKey(key, sub_key) as reg_key:
+                winreg.SetValueEx(reg_key, value_name, 0, value_type, value)
+            return "Registry value written successfully."
         except Exception as e:
             return f"Error writing to registry: {e}"
