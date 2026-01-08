@@ -22,25 +22,59 @@ A cybersecurity-focused AI assistant that can analyze system logs, monitor syste
 
 ## Installation
 
-1. Install Ollama from https://ollama.ai/
+Follow these steps to get the AI Security Agent running from clone to chat:
 
-2. Pull an AI model (e.g., llama2, mistral):
-   ```bash
-   ollama pull llama2
-   ```
+### 1. Clone the Repository
 
-3. Install Python dependencies:
-   ```bash
-   pip install flask requests psutil
-   ```
+```bash
+git clone https://github.com/fawad0dev/AI-Sec-Agent.git
+cd AI-Sec-Agent
+```
 
-4. Run the application:
-   ```bash
-   cd src
-   python ChatBotGUI.py
-   ```
+### 2. Install Ollama
 
-5. The application will automatically open in your browser at http://localhost:5000
+Download and install Ollama from https://ollama.ai/
+
+Verify Ollama is running:
+```bash
+ollama serve
+```
+
+### 3. Pull an AI Model
+
+Download a model (e.g., llama2, mistral, codellama):
+```bash
+ollama pull llama2
+```
+
+### 4. Install Python Dependencies
+
+Install required Python packages using pip:
+```bash
+pip install -r requirements.txt
+```
+
+Or install manually:
+```bash
+pip install flask requests psutil
+```
+
+### 5. Run the Application
+
+Navigate to the src directory and start the Flask application:
+```bash
+cd src
+python ChatBotGUI.py
+```
+
+### 6. Start Chatting
+
+The application will automatically open in your browser at http://localhost:5000
+
+You can now interact with the AI Security Agent! Try commands like:
+- "scan the last 100 logs"
+- "check system health"
+- "show system information"
 
 ## Usage
 
