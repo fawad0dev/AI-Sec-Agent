@@ -144,7 +144,25 @@ src/
 
 ## Recent Improvements
 
-### Version 2.0 (Current)
+### Version 2.1 (Current)
+
+**Enhanced tool execution and reliability:**
+
+1. **Improved AI Instruction** - Strengthened system prompt to prevent hallucination
+   - Explicit "NEVER make up information" directives
+   - Clear examples of when and how to use tools
+   - Stronger enforcement of tool usage for commands
+
+2. **Better Debugging** - Enhanced logging and error detection
+   - Console logging shows when tools are/aren't being used
+   - Detection of when AI fails to use tools for action requests
+   - User-facing warnings when AI responds without tool execution
+
+3. **Cross-Platform Fixes** - Improved compatibility
+   - Fixed winreg import issues on non-Windows platforms
+   - Better OS detection and platform-specific behavior
+
+### Version 2.0
 
 **Major enhancements to AI behavior and analysis capabilities:**
 
@@ -202,6 +220,15 @@ Select different Ollama models from the dropdown:
 - Pull a model: `ollama pull llama2`
 - Refresh the models list in the web interface
 
+**AI is making up information instead of running commands:**
+- Check the browser console (F12) for debug output showing tool execution
+- Look for messages like "✓ Successfully extracted tool call" or "⚠ No tool call JSON found"
+- If you see warnings that no tool was used, try rephrasing your request more explicitly:
+  - Instead of: "what processes are running?"
+  - Try: "run the command to list all processes" or "execute ps aux"
+- Make sure the system prompt hasn't been changed - reset it using the "Set System Prompt" button with the default prompt
+- Some AI models are better at following instructions than others - try using `mistral` or `llama2` if available
+
 **Logs not found:**
 - **Windows**: Checks `C:\Windows\Logs`, `C:\Windows\System32\winevt\Logs`, etc.
 - **Linux**: Checks `/var/log`, `/var/log/syslog`, `/var/log/auth.log`, etc.
@@ -212,6 +239,7 @@ Select different Ollama models from the dropdown:
 - Verify `"allowed": true` in command parameters
 - Check user permissions for the command
 - The system automatically detects your OS and uses appropriate commands
+- Check the console output for error messages
 
 ## Cross-Platform Support
 
