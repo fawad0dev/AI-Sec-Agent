@@ -2,7 +2,6 @@ import subprocess
 import sys
 import platform
 import psutil
-import winreg
 
 # Windows registry module is only available on Windows
 try:
@@ -152,7 +151,7 @@ class Utils:
             return f"Error executing command '{command}' on {self.os_type}: {e.stderr}"
         except Exception as e:
             return f"Error: {str(e)}"
-    def read_Registry(self, key, sub_key, reserved=0, access=winreg.KEY_READ):
+    def read_Registry(self, key, sub_key, reserved=0, access=None):
         """
         Read Windows Registry key values.
 
@@ -167,6 +166,9 @@ class Utils:
         """
         if not HAS_WINREG:
             return ["Error: winreg module not available on this platform."]
+        
+        if access is None:
+            access = winreg.KEY_READ
         
         values = []
         try:
@@ -185,7 +187,7 @@ class Utils:
             values.append(f"Error reading registry: {e}")
         
         return values
-    def write_Registry(self, key, sub_key, value_name, value, value_type=winreg.REG_SZ):
+    def write_Registry(self, key, sub_key, value_name, value, value_type=None):
         """
         Write a value to the Windows Registry.
 
@@ -201,6 +203,9 @@ class Utils:
         """
         if not HAS_WINREG:
             return "Error: winreg module not available on this platform."
+        
+        if value_type is None:
+            value_type = winreg.REG_SZ
         
         try:
             with winreg.CreateKey(key, sub_key) as reg_key:

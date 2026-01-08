@@ -698,6 +698,20 @@
 
         // Initialize
         checkStatus();
+        
+        // Load default system prompt
+        async function loadDefaultSystemPrompt() {
+            try {
+                const response = await fetch('/api/get-default-system');
+                const data = await response.json();
+                if (data.prompt) {
+                    document.getElementById('system-prompt').value = data.prompt;
+                }
+            } catch (error) {
+                console.error('Failed to load default system prompt:', error);
+            }
+        }
+        loadDefaultSystemPrompt();
     </script>
 </body>
 
