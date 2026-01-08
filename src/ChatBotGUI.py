@@ -6,6 +6,7 @@ import webbrowser
 import os
 import json
 import re
+import platform
 from pathlib import Path
 from datetime import datetime
 
@@ -106,30 +107,75 @@ def _safe_tail(path: Path, max_lines: int = 200, max_bytes: int = 2_000_000) -> 
 
 
 def _collect_logs() -> list:
-    log_dirs = [
-        Path(r"C:\\Windows\\Logs"),
-        Path(r"C:\\Windows\\System32\\winevt\\Logs"),
-        Path(r"C:\\Windows\\Temp"),
-        Path(os.getenv("ProgramData", r"C:\\ProgramData")),
-        Path.home() / "AppData/Local/Temp",
-    ]
+    """
+    Collect log files from OS-specific locations.
+    Detects OS type and uses appropriate log directories.
+    """
+    os_type = platform.system()
+    
+    if os_type == "Windows":
+        # Windows log directories
+        log_dirs = [
+            Path(r"C:\\Windows\\Logs"),
+            Path(r"C:\\Windows\\System32\\winevt\\Logs"),
+            Path(r"C:\\Windows\\Temp"),
+            Path(os.getenv("ProgramData", r"C:\\ProgramData")),
+            Path.home() / "AppData/Local/Temp",
+        ]
+    elif os_type == "Linux":
+        # Linux log directories
+        log_dirs = [
+            Path("/var/log"),
+            Path("/var/log/syslog"),
+            Path("/var/log/auth.log"),
+            Path("/tmp"),
+            Path.home() / ".local/share",
+        ]
+    elif os_type == "Darwin":  # macOS
+        # macOS log directories
+        log_dirs = [
+            Path("/var/log"),
+            Path("/Library/Logs"),
+            Path.home() / "Library/Logs",
+            Path("/tmp"),
+        ]
+    else:
+        # Fallback for other Unix-like systems
+        log_dirs = [
+            Path("/var/log"),
+            Path("/tmp"),
+            Path.home() / ".local/share",
+        ]
 
     found = []
     for base in log_dirs:
         if not base.exists():
             continue
-        for root, _, files in os.walk(base):
-            for name in files:
-                path = Path(root) / name
-                try:
-                    info = path.stat()
-                    found.append({
-                        "path": str(path),
-                        "size": info.st_size,
-                        "mtime": datetime.fromtimestamp(info.st_mtime),
-                    })
-                except OSError:
-                    continue
+        try:
+            if base.is_file():
+                # If the path is a file (like /var/log/syslog), add it directly
+                info = base.stat()
+                found.append({
+                    "path": str(base),
+                    "size": info.st_size,
+                    "mtime": datetime.fromtimestamp(info.st_mtime),
+                })
+            else:
+                # If it's a directory, walk through it
+                for root, _, files in os.walk(base):
+                    for name in files:
+                        path = Path(root) / name
+                        try:
+                            info = path.stat()
+                            found.append({
+                                "path": str(path),
+                                "size": info.st_size,
+                                "mtime": datetime.fromtimestamp(info.st_mtime),
+                            })
+                        except OSError:
+                            continue
+        except OSError:
+            continue
     found.sort(key=lambda x: x["mtime"], reverse=True)
     return found[:8]
 
@@ -203,9 +249,15 @@ def _run_cmd_safe(command: str, limit: int = MAX_OUTPUT_CHARS) -> str:
 
 
 def build_system_health_report() -> str:
-    parts = ["## System Health Check Report"]
+    """
+    Build a system health report using OS-specific commands.
+    Detects OS type and uses appropriate commands for each platform.
+    """
+    os_type = platform.system()
+    parts = [f"## System Health Check Report (OS: {os_type})"]
 
-    if HAS_WINREG:
+    # Startup Programs - OS specific
+    if os_type == "Windows" and HAS_WINREG:
         parts.append("\n### Startup Programs (Registry Run Keys)")
         startup = []
         startup.extend(_read_run_key(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
@@ -215,23 +267,58 @@ def build_system_health_report() -> str:
                 parts.append(f"  - {item}")
         else:
             parts.append("  (no entries found)")
+    elif os_type == "Linux":
+        parts.append("\n### Startup Programs (systemd services)")
+        parts.append("```")
+        parts.append(_run_cmd_safe("systemctl list-unit-files --type=service --state=enabled"))
+        parts.append("```")
+    elif os_type == "Darwin":  # macOS
+        parts.append("\n### Startup Programs (Launch Agents/Daemons)")
+        parts.append("```")
+        parts.append(_run_cmd_safe("launchctl list"))
+        parts.append("```")
     else:
         parts.append("\n### Startup Programs")
-        parts.append("  (Registry access not available on this platform)")
+        parts.append("  (Startup program listing not available for this OS)")
 
+    # Scheduled Tasks - OS specific
     parts.append("\n### Scheduled Tasks")
     parts.append("```")
-    parts.append(_run_cmd_safe("schtasks /query /fo LIST /v"))
+    if os_type == "Windows":
+        parts.append(_run_cmd_safe("schtasks /query /fo LIST /v"))
+    elif os_type == "Linux":
+        # Check cron jobs
+        parts.append(_run_cmd_safe("crontab -l 2>/dev/null || echo 'No crontab for current user'"))
+        parts.append("\n### System-wide cron jobs:")
+        parts.append(_run_cmd_safe("ls -la /etc/cron* 2>/dev/null || echo 'Cannot access cron directories'"))
+    elif os_type == "Darwin":  # macOS
+        parts.append(_run_cmd_safe("crontab -l 2>/dev/null || echo 'No crontab for current user'"))
+    else:
+        parts.append("(Scheduled tasks listing not available for this OS)")
     parts.append("```")
 
+    # Active Network Connections - OS specific
     parts.append("\n### Active Network Connections")
     parts.append("```")
-    parts.append(_run_cmd_safe("netstat -ano"))
+    if os_type == "Windows":
+        parts.append(_run_cmd_safe("netstat -ano"))
+    elif os_type in ["Linux", "Darwin"]:
+        # Try netstat, fallback to ss on Linux
+        netstat_output = _run_cmd_safe("netstat -tuln 2>/dev/null || ss -tuln")
+        parts.append(netstat_output)
+    else:
+        parts.append("(Network connections listing not available for this OS)")
     parts.append("```")
 
+    # Running Processes - OS specific
     parts.append("\n### Running Processes")
     parts.append("```")
-    parts.append(_run_cmd_safe("tasklist"))
+    if os_type == "Windows":
+        parts.append(_run_cmd_safe("tasklist"))
+    elif os_type in ["Linux", "Darwin"]:
+        parts.append(_run_cmd_safe("ps aux"))
+    else:
+        parts.append("(Process listing not available for this OS)")
     parts.append("```")
 
     parts.append("\n---")
