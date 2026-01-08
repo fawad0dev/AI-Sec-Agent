@@ -329,20 +329,25 @@ def chat():
             final_response = response_text + "\n\n" + results_text + "\n\n" + analysis_response
         else:
             # Check if the user was asking for a command/action but AI didn't use tools
+            # This is a best-effort detection to help users understand why they might not get expected results
             command_keywords = ['run', 'execute', 'check', 'list', 'show', 'get', 'scan', 'find', 
-                              'display', 'view', 'analyze', 'monitor', 'test', 'search']
+                              'display', 'view', 'analyze', 'monitor', 'test', 'search', 'command']
             user_lower = user_message.lower()
             
             # If user is asking for an action but no tool was called, warn them
+            # Note: This may have false positives but helps guide users when AI doesn't follow instructions
             if any(keyword in user_lower for keyword in command_keywords):
                 print(f"⚠ WARNING: User requested action but AI didn't use any tool!")
                 print(f"⚠ User message: {user_message}")
                 print(f"⚠ AI response: {response_text[:200]}...")
                 
                 # Add a note to the response to make it clear
-                warning = ("\n\n---\n**⚠️ Note**: The AI responded without using any tools. "
-                          "If you expected a command to be executed, please try rephrasing your request "
-                          "to be more explicit (e.g., 'run the command ls -la' or 'execute ps aux').")
+                # Use OS-appropriate command examples
+                example_cmd = "dir" if OS_TYPE == "Windows" else "ls -la"
+                example_cmd2 = "tasklist" if OS_TYPE == "Windows" else "ps aux"
+                warning = (f"\n\n---\n**⚠️ Note**: The AI responded without using any tools. "
+                          f"If you expected a command to be executed, please try rephrasing your request "
+                          f"to be more explicit (e.g., 'run the command {example_cmd}' or 'execute {example_cmd2}').")
                 final_response = response_text + warning
             
             # No tool execution, just add the response
