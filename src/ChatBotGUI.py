@@ -8,7 +8,6 @@ import json
 import re
 from pathlib import Path
 from datetime import datetime
-import winreg
 
 # Windows registry module is only available on Windows
 try:
@@ -26,7 +25,7 @@ current_model = None
 
 MAX_OUTPUT_CHARS = 4000
 
-defatltSystemPrompt="""You are a cybersecurity expert AI assistant specialized in system security analysis. You have access to powerful tools to analyze systems and you MUST use them proactively.
+defaultSystemPrompt="""You are a cybersecurity expert AI assistant specialized in system security analysis. You have access to powerful tools to analyze systems and you MUST use them proactively.
 
 **AVAILABLE TOOLS:**
 1. get_system_info - Get OS/CPU/RAM information (params: {})
@@ -78,7 +77,7 @@ Specific actions to take
 - For log analysis, look for: failed logins, errors, unusual access patterns, privilege escalations
 - Remember previous command outputs and build upon them in conversation"""
 
-messages = [{"role": "system", "content": defatltSystemPrompt}]
+messages = [{"role": "system", "content": defaultSystemPrompt}]
 def _human_size(num_bytes: float) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
         if num_bytes < 1024:
@@ -318,9 +317,15 @@ def format_action_results(results: list) -> str:
         
         # Format result based on type
         if isinstance(result_data, dict):
-            lines.append("```json")
-            lines.append(json.dumps(result_data, indent=2))
-            lines.append("```")
+            try:
+                lines.append("```json")
+                lines.append(json.dumps(result_data, indent=2, default=str))
+                lines.append("```")
+            except (TypeError, ValueError) as e:
+                # Fallback to string representation if JSON serialization fails
+                lines.append("```")
+                lines.append(str(result_data))
+                lines.append("```")
         elif isinstance(result_data, str):
             # Check if it's already formatted with markdown code blocks
             if "```" in result_data:
@@ -373,7 +378,7 @@ def set_system_prompt():
 @app.route('/api/get-default-system', methods=['GET'])
 def get_default_system_prompt():
     """Get the default system prompt"""
-    return jsonify({'prompt': defatltSystemPrompt})
+    return jsonify({'prompt': defaultSystemPrompt})
 
 @app.route('/api/clear', methods=['POST'])
 def clear_chat():
@@ -419,7 +424,13 @@ def chat():
             messages.append({"role": "assistant", "content": response_text})
             
             # Add tool results as a user message so the AI can see and analyze them
-            messages.append({"role": "user", "content": f"Tool execution completed. Here are the results:\n\n{results_text}\n\nPlease analyze these results and provide a detailed summary with security assessment and recommendations."})
+            analysis_prompt = (
+                "Tool execution completed. Here are the results:\n\n"
+                f"{results_text}\n\n"
+                "Please analyze these results and provide a detailed summary with "
+                "security assessment and recommendations."
+            )
+            messages.append({"role": "user", "content": analysis_prompt})
             
             # Get AI's analysis of the results
             analysis_response = client.chat(current_model, messages)
