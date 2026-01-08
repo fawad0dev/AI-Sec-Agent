@@ -9,7 +9,6 @@ try:
     HAS_WINREG = True
 except ImportError:
     HAS_WINREG = False
-    winreg = None  # Set to None to avoid NameError
 
 # Cache the OS type to avoid repeated system calls
 OS_TYPE = platform.system()

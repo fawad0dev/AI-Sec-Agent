@@ -123,14 +123,18 @@ def _collect_logs() -> list:
             Path(os.getenv("ProgramData", r"C:\\ProgramData")),
             Path.home() / "AppData/Local/Temp",
         ]
+        log_files = []  # Windows doesn't have standard log files to check
     elif OS_TYPE == "Linux":
         # Linux log directories
         log_dirs = [
             Path("/var/log"),
-            Path("/var/log/syslog"),
-            Path("/var/log/auth.log"),
             Path("/tmp"),
             Path.home() / ".local/share",
+        ]
+        # Specific log files to check
+        log_files = [
+            Path("/var/log/syslog"),
+            Path("/var/log/auth.log"),
         ]
     elif OS_TYPE == "Darwin":  # macOS
         # macOS log directories
@@ -140,6 +144,7 @@ def _collect_logs() -> list:
             Path.home() / "Library/Logs",
             Path("/tmp"),
         ]
+        log_files = []  # macOS doesn't have standard log files to check
     else:
         # Fallback for other Unix-like systems
         log_dirs = [
@@ -147,34 +152,40 @@ def _collect_logs() -> list:
             Path("/tmp"),
             Path.home() / ".local/share",
         ]
+        log_files = []
 
     found = []
-    for base in log_dirs:
-        if not base.exists():
-            continue
-        try:
-            if base.is_file():
-                # If the path is a file (like /var/log/syslog), add it directly
-                info = base.stat()
+    
+    # First, add specific log files if they exist
+    for log_file in log_files:
+        if log_file.exists() and log_file.is_file():
+            try:
+                info = log_file.stat()
                 found.append({
-                    "path": str(base),
+                    "path": str(log_file),
                     "size": info.st_size,
                     "mtime": datetime.fromtimestamp(info.st_mtime),
                 })
-            else:
-                # If it's a directory, walk through it
-                for root, _, files in os.walk(base):
-                    for name in files:
-                        path = Path(root) / name
-                        try:
-                            info = path.stat()
-                            found.append({
-                                "path": str(path),
-                                "size": info.st_size,
-                                "mtime": datetime.fromtimestamp(info.st_mtime),
-                            })
-                        except OSError:
-                            continue
+            except OSError:
+                continue
+    
+    # Then walk through directories
+    for base in log_dirs:
+        if not base.exists() or not base.is_dir():
+            continue
+        try:
+            for root, _, files in os.walk(base):
+                for name in files:
+                    path = Path(root) / name
+                    try:
+                        info = path.stat()
+                        found.append({
+                            "path": str(path),
+                            "size": info.st_size,
+                            "mtime": datetime.fromtimestamp(info.st_mtime),
+                        })
+                    except OSError:
+                        continue
         except OSError:
             continue
     found.sort(key=lambda x: x["mtime"], reverse=True)
@@ -286,13 +297,13 @@ def build_system_health_report() -> str:
     parts.append("```")
     if OS_TYPE == "Windows":
         parts.append(_run_cmd_safe("schtasks /query /fo LIST /v"))
-    elif OS_TYPE == "Linux":
-        # Check cron jobs
+    elif OS_TYPE in ["Linux", "Darwin"]:
+        # Check cron jobs (same for Linux and macOS)
         parts.append(_run_cmd_safe("crontab -l 2>/dev/null || echo 'No crontab for current user'"))
-        parts.append("\n### System-wide cron jobs:")
-        parts.append(_run_cmd_safe("ls -la /etc/cron* 2>/dev/null || echo 'Cannot access cron directories'"))
-    elif OS_TYPE == "Darwin":  # macOS
-        parts.append(_run_cmd_safe("crontab -l 2>/dev/null || echo 'No crontab for current user'"))
+        if OS_TYPE == "Linux":
+            # Linux-specific: also check system-wide cron jobs
+            parts.append("\n### System-wide cron jobs:")
+            parts.append(_run_cmd_safe("ls -la /etc/cron* 2>/dev/null || echo 'Cannot access cron directories'"))
     else:
         parts.append("(Scheduled tasks listing not available for this OS)")
     parts.append("```")
