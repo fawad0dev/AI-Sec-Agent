@@ -43,27 +43,35 @@ defaultSystemPrompt="""You are a cybersecurity expert AI assistant specialized i
 1. get_system_info - Get OS/CPU/RAM information (params: {})
 2. terminal_command - Execute shell commands based on operating system (params: {"command": "...", "allowed": true})
 
+**CRITICAL: YOU MUST USE TOOLS - NEVER MAKE UP INFORMATION**
+When a user asks you to run a command, check system info, or perform any action:
+1. You MUST use the appropriate tool - DO NOT make up or fabricate responses
+2. You MUST output the tool call in JSON format
+3. You MUST wait for real tool results before analyzing
+
 **YOUR WORKFLOW:**
-1. When asked to do something, immediately identify which tool to use
-2. Execute the tool by outputting ONLY a JSON code block (no explanation before it)
-3. After receiving tool results, ALWAYS provide detailed analysis including:
-   - Summary of what was found
-   - Security concerns or suspicious patterns
-   - Specific recommendations and solutions
-   - Action items if issues are detected
+1. User asks you to do something → Identify which tool to use
+2. Output a JSON code block with the tool call (you can add a brief note before the JSON if needed)
+3. Wait for tool results to be provided back to you
+4. Analyze the ACTUAL results - never invent or assume what the results might be
 
 **TOOL SELECTION GUIDE:**
-- "run command", "execute", "check file/directory", "list processes", "etc" → use terminal_command
-- "system info", "OS details", "CPU", "RAM", "hardware" → use get_system_info
+- User wants to "run/execute a command", "check file/directory", "list processes", "show network", etc. → use terminal_command
+- User asks for "system info", "OS details", "CPU", "RAM", "hardware" → use get_system_info
+- ANY command that needs terminal execution → use terminal_command with {"command": "the_actual_command", "allowed": true}
 
 **OUTPUT FORMAT FOR TOOL EXECUTION:**
-When you need a tool, respond with ONLY this (no other text before or after):
+When you need to use a tool, your response must include a JSON code block like this:
 ```json
-{"tool": "tool_name", "params": {}}
+{"tool": "tool_name", "params": {...}}
 ```
 
+Examples:
+- To run "ps aux": ```json\n{"tool": "terminal_command", "params": {"command": "ps aux", "allowed": true}}\n```
+- To get system info: ```json\n{"tool": "get_system_info", "params": {}}\n```
+
 **ANALYSIS FORMAT (after receiving tool results):**
-Always structure your analysis as:
+Once you receive the actual tool results, structure your analysis as:
 ## Summary
 Brief overview of findings
 
@@ -77,14 +85,16 @@ Any concerns or suspicious activity
 ## Recommendations
 Specific actions to take
 
-**CRITICAL RULES:**
-- NEVER just explain what you could do - DO IT immediately
-- NEVER ask permission to use tools - use them
-- NEVER make up answers - if data is insufficient, state that clearly
-- ALWAYS analyze results thoroughly - don't just repeat raw data
-- ALWAYS provide actionable recommendations
-- For log analysis, look for: failed logins, errors, unusual access patterns, privilege escalations
-- Remember previous command outputs and build upon them in conversation"""
+**ABSOLUTE RULES - NEVER BREAK THESE:**
+- ❌ NEVER make up command outputs or system information
+- ❌ NEVER say "here's what the command would show" without running it
+- ❌ NEVER fabricate data or pretend you ran a command when you didn't
+- ✅ ALWAYS use tools when user requests an action
+- ✅ ALWAYS wait for real tool results before providing analysis
+- ✅ ALWAYS base your analysis on actual data, not assumptions
+- ✅ If you don't have the data yet, use a tool to get it first
+
+Remember: Your job is to ACTUALLY EXECUTE tools and analyze REAL results, not to explain what COULD happen."""
 
 messages = [{"role": "system", "content": defaultSystemPrompt}]
 def _human_size(num_bytes: float) -> str:
@@ -114,7 +124,11 @@ def _run_cmd_safe(command: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     return output[:limit]
 
 def extract_action_payload(text: str):
-    
+    """
+    Extract tool call JSON from AI response.
+    Looks for JSON code blocks with 'tool' and 'params' keys.
+    """
+    # Try to find JSON code block (with or without 'json' language specifier)
     pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
     match = re.search(pattern, text, re.DOTALL)
     
@@ -124,14 +138,18 @@ def extract_action_payload(text: str):
             parsed = json.loads(json_str)
             # Validate it has required structure
             if isinstance(parsed, dict) and "tool" in parsed:
+                print(f"✓ Successfully extracted tool call: {parsed.get('tool')}")
                 return parsed
             else:
-                print(f"Warning: Parsed JSON but missing 'tool' key: {parsed}")
+                print(f"⚠ Warning: Parsed JSON but missing 'tool' key: {parsed}")
                 return None
         except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
+            print(f"✗ JSON decode error: {e}")
             print(f"Attempted to parse: {json_str[:200]}...")
             return None
+    
+    # If no code block found, check if AI is trying to explain instead of execute
+    print(f"⚠ No tool call JSON found in response. Response preview: {text[:200]}...")
     return None
 
 
@@ -282,14 +300,17 @@ def chat():
     try:
         # Get response from Ollama
         response_text = client.chat(current_model, messages)
+        print(f"\n{'='*60}")
+        print(f"USER MESSAGE: {user_message[:100]}")
+        print(f"AI RESPONSE (first 300 chars): {response_text[:300]}")
+        print(f"{'='*60}\n")
 
         # Let the model drive tool choices; parse any declared actions
         action_payload = extract_action_payload(response_text)
-        print(f"Extracted action payload: {action_payload}")
         final_response = response_text
         
         if action_payload and isinstance(action_payload, dict):
-            print(f"Detected action payload: {action_payload.get('tool')} with params {action_payload.get('params', {})}")
+            print(f"✓ Executing tool: {action_payload.get('tool')} with params {action_payload.get('params', {})}")
             action_results = execute_actions([action_payload])
             results_text = format_action_results(action_results)
             
@@ -307,6 +328,23 @@ def chat():
             # Combine everything for the final response to user
             final_response = response_text + "\n\n" + results_text + "\n\n" + analysis_response
         else:
+            # Check if the user was asking for a command/action but AI didn't use tools
+            command_keywords = ['run', 'execute', 'check', 'list', 'show', 'get', 'scan', 'find', 
+                              'display', 'view', 'analyze', 'monitor', 'test', 'search']
+            user_lower = user_message.lower()
+            
+            # If user is asking for an action but no tool was called, warn them
+            if any(keyword in user_lower for keyword in command_keywords):
+                print(f"⚠ WARNING: User requested action but AI didn't use any tool!")
+                print(f"⚠ User message: {user_message}")
+                print(f"⚠ AI response: {response_text[:200]}...")
+                
+                # Add a note to the response to make it clear
+                warning = ("\n\n---\n**⚠️ Note**: The AI responded without using any tools. "
+                          "If you expected a command to be executed, please try rephrasing your request "
+                          "to be more explicit (e.g., 'run the command ls -la' or 'execute ps aux').")
+                final_response = response_text + warning
+            
             # No tool execution, just add the response
             messages.append({"role": "assistant", "content": response_text})
 
@@ -315,6 +353,9 @@ def chat():
             'response': final_response
         })
     except Exception as e:
+        print(f"✗ Error in chat endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
