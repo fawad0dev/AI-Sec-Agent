@@ -25,6 +25,14 @@ current_model = None
 
 MAX_OUTPUT_CHARS = 4000
 
+# Analysis prompt used after tool execution
+ANALYSIS_PROMPT_TEMPLATE = (
+    "Tool execution completed. Here are the results:\n\n"
+    "{results}\n\n"
+    "Please analyze these results and provide a detailed summary with "
+    "security assessment and recommendations."
+)
+
 defaultSystemPrompt="""You are a cybersecurity expert AI assistant specialized in system security analysis. You have access to powerful tools to analyze systems and you MUST use them proactively.
 
 **AVAILABLE TOOLS:**
@@ -302,6 +310,15 @@ def execute_actions(actions: list) -> list:
     return results
 
 
+def _json_serializer(obj):
+    """Custom JSON serializer for objects not serializable by default json code"""
+    if hasattr(obj, '__dict__'):
+        return obj.__dict__
+    elif hasattr(obj, '__str__'):
+        return str(obj)
+    return repr(obj)
+
+
 def format_action_results(results: list) -> str:
     if not results:
         return ""
@@ -319,7 +336,7 @@ def format_action_results(results: list) -> str:
         if isinstance(result_data, dict):
             try:
                 lines.append("```json")
-                lines.append(json.dumps(result_data, indent=2, default=str))
+                lines.append(json.dumps(result_data, indent=2, default=_json_serializer))
                 lines.append("```")
             except (TypeError, ValueError) as e:
                 # Fallback to string representation if JSON serialization fails
@@ -424,12 +441,7 @@ def chat():
             messages.append({"role": "assistant", "content": response_text})
             
             # Add tool results as a user message so the AI can see and analyze them
-            analysis_prompt = (
-                "Tool execution completed. Here are the results:\n\n"
-                f"{results_text}\n\n"
-                "Please analyze these results and provide a detailed summary with "
-                "security assessment and recommendations."
-            )
+            analysis_prompt = ANALYSIS_PROMPT_TEMPLATE.format(results=results_text)
             messages.append({"role": "user", "content": analysis_prompt})
             
             # Get AI's analysis of the results
