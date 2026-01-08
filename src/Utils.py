@@ -1,6 +1,5 @@
 import subprocess
 import sys
-import winreg
 import platform
 import psutil
 
@@ -11,7 +10,14 @@ try:
 except ImportError:
     HAS_WINREG = False
 
+# Cache the OS type to avoid repeated system calls
+OS_TYPE = platform.system()
+
 class Utils:
+    def __init__(self):
+        """Initialize Utils with cached OS type."""
+        self.os_type = OS_TYPE
+    
     def get_system_info(self):
         """
         Get system information.
@@ -101,17 +107,23 @@ class Utils:
     def run_terminal_command(self, command, allowed=False):
         """
         Execute a shell command and return its output.
+        Automatically detects OS type before executing commands.
 
         Args:
             command (str): Shell command to execute
+            allowed (bool): Whether command execution is allowed
+        
+        Returns:
+            str: Command output or error message
         """
         if not allowed:
             return "Cancelled By User"
+        
         try:
             result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             return result.stdout
         except subprocess.CalledProcessError as e:
-            return f"Error executing command '{command}': {e.stderr}"
+            return f"Error executing command '{command}' on {self.os_type}: {e.stderr}"
     def read_Registry(self, key, value_name):
         """
         Read a value from the Windows Registry.
@@ -132,7 +144,7 @@ class Utils:
             return value
         except Exception as e:
             return f"Error reading registry: {e}"
-    def write_Registry(self, key, value_name, value, value_type=winreg.REG_SZ):
+    def write_Registry(self, key, value_name, value, value_type=None):
         """
         Write a value to the Windows Registry.
 
@@ -140,10 +152,14 @@ class Utils:
             key (str): Registry key path
             value_name (str): Name of the value to write
             value: Value to write
-            value_type: Type of the registry value (default is REG_SZ)
+            value_type: Type of the registry value (default is REG_SZ if available)
         """
         if not HAS_WINREG:
             return "Error: Registry access is only available on Windows"
+        
+        # Set default value_type only if winreg is available
+        if value_type is None:
+            value_type = winreg.REG_SZ
         
         try:
             registry_key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key)

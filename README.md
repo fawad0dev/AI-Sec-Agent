@@ -2,6 +2,8 @@
 
 A cybersecurity-focused AI assistant that can analyze system logs, monitor system health, execute commands, and provide security recommendations. Powered by Ollama for local LLM inference.
 
+**Cross-Platform Support**: Works on Windows, Linux, and macOS with automatic OS detection and platform-specific commands.
+
 ## Features
 
 - 🔍 **Log Analysis**: Automatically scan and analyze system logs for security issues
@@ -10,6 +12,7 @@ A cybersecurity-focused AI assistant that can analyze system logs, monitor syste
 - 🧠 **Persistent Memory**: AI remembers command outputs throughout the conversation
 - 📊 **Structured Analysis**: Provides summary, findings, security assessment, and recommendations
 - 🔒 **Security-First**: Designed specifically for cybersecurity analysis and threat detection
+- 🌐 **Cross-Platform**: Automatically detects OS type (Windows, Linux, macOS) and uses appropriate commands
 
 ## Requirements
 
@@ -19,6 +22,7 @@ A cybersecurity-focused AI assistant that can analyze system logs, monitor syste
   - Flask
   - requests
   - psutil
+- **Supported Operating Systems**: Windows, Linux, macOS
 
 ## Installation
 
@@ -199,12 +203,37 @@ Select different Ollama models from the dropdown:
 - Refresh the models list in the web interface
 
 **Logs not found:**
-- Windows: Checks `C:\Windows\Logs`, `C:\Windows\System32\winevt\Logs`, etc.
+- **Windows**: Checks `C:\Windows\Logs`, `C:\Windows\System32\winevt\Logs`, etc.
+- **Linux**: Checks `/var/log`, `/var/log/syslog`, `/var/log/auth.log`, etc.
+- **macOS**: Checks `/var/log`, `/Library/Logs`, `~/Library/Logs`, etc.
 - Ensure you have read permissions for log directories
 
 **Commands not executing:**
 - Verify `"allowed": true` in command parameters
 - Check user permissions for the command
+- The system automatically detects your OS and uses appropriate commands
+
+## Cross-Platform Support
+
+The AI Security Agent automatically detects your operating system and uses platform-specific commands:
+
+**Windows**:
+- Registry-based startup programs
+- `schtasks` for scheduled tasks
+- `netstat -ano` for network connections
+- `tasklist` for running processes
+
+**Linux**:
+- `systemctl` for startup services
+- `crontab` for scheduled tasks
+- `netstat -tuln` or `ss -tuln` for network connections
+- `ps aux` for running processes
+
+**macOS**:
+- `launchctl` for launch agents/daemons
+- `crontab` for scheduled tasks
+- `netstat -tuln` for network connections
+- `ps aux` for running processes
 
 ## Contributing
 
