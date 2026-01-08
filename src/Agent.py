@@ -102,7 +102,7 @@ class OllamaClient:
         payload = {
             "model": model,
             "messages": messages,
-            "stream": True,
+            "stream": False,
             "options": {
                 "temperature": temperature,
             }
@@ -112,7 +112,7 @@ class OllamaClient:
             response = requests.post(
                 f"{self.api_url}/chat",
                 json=payload,
-                timeout=120
+                timeout=99999
             )
             
             if response.status_code == 200:
@@ -136,8 +136,7 @@ class OllamaClient:
                 # Fallback to single JSON object parsing
                 try:
                     data = response.json()
-                    message = data.get('message', {})
-                    return message.get('content', '')
+                    return data["message"]["content"]
                 except Exception as parse_err:
                     return f"Error parsing response: {parse_err}"
             else:

@@ -8,6 +8,7 @@ import json
 import re
 from pathlib import Path
 from datetime import datetime
+import winreg
 
 # Windows registry module is only available on Windows
 try:
@@ -21,12 +22,41 @@ app = Flask(__name__)
 # Initialize Ollama client
 client = OllamaClient()
 utils = Utils()
-messages = []
 current_model = None
 
 MAX_OUTPUT_CHARS = 4000
 
+defatltSystemPrompt="""You are a cybersecurity expert AI assistant. You have access to powerful tools to analyze systems.
 
+**TOOL REFERENCE:**
+1. get_system_info - OS/CPU/RAM info (params: {})
+2. terminal_command - Run commands (params: {"command": "...", "allowed": true})
+3. scan_common_logs - Read system logs (params: {})
+4. system_health_check - Check startup/tasks/network (params: {})
+
+**IMPORTANT - FOLLOW THESE RULES EXACTLY:**
+
+When user asks about: → Use this tool:
+- System logs, log files → scan_common_logs
+- Files, directories, processes → terminal_command
+- OS info, CPU, RAM → get_system_info
+- Startup apps, scheduled tasks, network → system_health_check
+
+**OUTPUT FORMAT:**
+When you need to run a tool, output ONLY this JSON (no other text):
+```json
+{"tool": "tool_name", "params": {}}
+```
+
+After tool results appear, analyze them and provide a summary.
+
+**CRITICAL:** 
+- NEVER explain tools or ask if you should use them - just use the right tool
+- For "logs" questions → ALWAYS use scan_common_logs, NOT explanations
+- For "directories/files" questions → ALWAYS use terminal_command
+- Return results in markdown format after tool execution"""
+
+messages = [{"role": "system", "content": defatltSystemPrompt}]
 def _human_size(num_bytes: float) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
         if num_bytes < 1024:
@@ -104,6 +134,7 @@ def _read_run_key(key_root, subkey):
     
     try:
         results = []
+        # winreg is guaranteed to be available here due to HAS_WINREG check above
         with winreg.OpenKey(key_root, subkey) as k:
             index = 0
             while True:
@@ -119,7 +150,7 @@ def _read_run_key(key_root, subkey):
 
 
 def _run_cmd_safe(command: str, limit: int = MAX_OUTPUT_CHARS) -> str:
-    output = utils.run_shell_command(command, allowed=True)
+    output = utils.run_terminal_command(command, allowed=True)
     if not output:
         return "(no output)"
     return output[:limit]
@@ -152,16 +183,24 @@ def build_system_health_report() -> str:
 
 
 def extract_action_payload(text: str):
-    """Extract the first JSON object containing actions from fenced code or raw text."""
-    fences = re.findall(r"```(?:agent|json)?\s*({.*?})\s*```", text, re.DOTALL)
-    candidates = fences + [text]
-    for block in candidates:
+    
+    pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
+    match = re.search(pattern, text, re.DOTALL)
+    
+    if match:
+        json_str = match.group(1).strip()
         try:
-            obj = json.loads(block)
-            if isinstance(obj, dict) and "actions" in obj:
-                return obj
-        except Exception:
-            continue
+            parsed = json.loads(json_str)
+            # Validate it has required structure
+            if isinstance(parsed, dict) and "tool" in parsed:
+                return parsed
+            else:
+                print(f"Warning: Parsed JSON but missing 'tool' key: {parsed}")
+                return None
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            print(f"Attempted to parse: {json_str[:200]}...")
+            return None
     return None
 
 
@@ -171,7 +210,7 @@ def execute_actions(actions: list) -> list:
         tool = action.get("tool")
         params = action.get("params", {}) if isinstance(action, dict) else {}
         try:
-            if tool == "read_file":
+            """if tool == "read_file":
                 result = utils.read_file(params.get("path", ""), params.get("nooflines"), params.get("encoding", "utf-8"))
             elif tool == "write_file":
                 result = utils.write_file(params.get("path", ""), params.get("content", ""), params.get("encoding", "utf-8"))
@@ -179,9 +218,12 @@ def execute_actions(actions: list) -> list:
                 result = utils.append_file(params.get("path", ""), params.get("content", ""), params.get("encoding", "utf-8"))
             elif tool == "read_registry":
                 result = utils.read_Registry(params.get("key", ""), params.get("value_name", ""))
-            elif tool == "run_shell_command":
+            el"""
+            if tool == "get_system_info":
+                result = utils.get_system_info()
+            elif tool == "terminal_command":
                 if params.get("allowed") is True:
-                    result = utils.run_shell_command(params.get("command", ""), allowed=True)
+                    result = utils.run_terminal_command(params.get("command", ""), allowed=True)
                 else:
                     result = "Blocked: allowed flag not set to true."
             elif tool == "scan_common_logs":
@@ -254,6 +296,11 @@ def set_system_prompt():
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Empty prompt'})
 
+@app.route('/api/get-default-system', methods=['GET'])
+def get_default_system_prompt():
+    """Get the default system prompt"""
+    return jsonify({'prompt': defatltSystemPrompt})
+
 @app.route('/api/clear', methods=['POST'])
 def clear_chat():
     """Clear chat history but keep system prompt"""
@@ -287,16 +334,13 @@ def chat():
 
         # Let the model drive tool choices; parse any declared actions
         action_payload = extract_action_payload(response_text)
-        final_response = response_text
-
-        if action_payload:
-            actions = action_payload.get("actions", []) if isinstance(action_payload, dict) else []
-            results = execute_actions(actions)
-            action_report = format_action_results(results)
-            user_facing = action_payload.get("message") or response_text
-            final_response = f"{user_facing}\n\n{action_report}" if action_report else user_facing
-
+        results_text = ""
+        if action_payload and isinstance(action_payload, dict):
+            print(f"Detected action payload: {action_payload.get('tool')} with params {action_payload.get('params', {})}")
+            action_results = execute_actions([action_payload])
+            results_text = format_action_results(action_results)
         # Add assistant response
+        final_response = response_text + ("\n\n" + results_text if action_payload else "")
         messages.append({"role": "assistant", "content": final_response})
 
         return jsonify({

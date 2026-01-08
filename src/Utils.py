@@ -1,5 +1,8 @@
 import subprocess
 import sys
+import winreg
+import platform
+import psutil
 
 # Windows registry module is only available on Windows
 try:
@@ -9,6 +12,41 @@ except ImportError:
     HAS_WINREG = False
 
 class Utils:
+    def get_system_info(self):
+        """
+        Get system information.
+        os, version, ram, cpu, gpu, isConnectedToInternet and more 
+        Returns:
+            dict: System information
+        """
+        try:
+            system_info = {
+                "os": platform.system(),
+                "os_version": platform.version(),
+                "platform": platform.platform(),
+                "processor": platform.processor(),
+                "cpu_count": psutil.cpu_count(logical=True),
+                "ram_total_gb": round(psutil.virtual_memory().total / (1024 ** 3), 2),
+                "ram_available_gb": round(psutil.virtual_memory().available / (1024 ** 3), 2),
+                "is_connected_to_internet": self.check_internet_connection()
+            }
+            return system_info
+        except Exception as e:
+            return {"error": str(e)}
+    def check_internet_connection(self):
+        """
+        Check if the system is connected to the internet.
+
+        Returns:
+            bool: True if connected to internet, False otherwise
+        """
+        try:
+            result = subprocess.run(['ping', '-n' if platform.system() == 'Windows' else '-c', '1', '8.8.8.8'], 
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
+            return result.returncode == 0
+        except Exception:
+            return False
+
     def read_file(self, file_path, nooflines=None, encoding='utf-8'):
         """
         Read and return text content from a file.
@@ -60,7 +98,7 @@ class Utils:
         except Exception as e:
             return (f"Error appending to file: {e}")
 
-    def run_shell_command(self, command, allowed=False):
+    def run_terminal_command(self, command, allowed=False):
         """
         Execute a shell command and return its output.
 
@@ -94,3 +132,23 @@ class Utils:
             return value
         except Exception as e:
             return f"Error reading registry: {e}"
+    def write_Registry(self, key, value_name, value, value_type=winreg.REG_SZ):
+        """
+        Write a value to the Windows Registry.
+
+        Args:
+            key (str): Registry key path
+            value_name (str): Name of the value to write
+            value: Value to write
+            value_type: Type of the registry value (default is REG_SZ)
+        """
+        if not HAS_WINREG:
+            return "Error: Registry access is only available on Windows"
+        
+        try:
+            registry_key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key)
+            winreg.SetValueEx(registry_key, value_name, 0, value_type, value)
+            winreg.CloseKey(registry_key)
+            return "Registry updated successfully"
+        except Exception as e:
+            return f"Error writing to registry: {e}"
