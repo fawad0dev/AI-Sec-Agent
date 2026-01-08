@@ -8,7 +8,6 @@ import json
 import re
 from pathlib import Path
 from datetime import datetime
-import winreg
 
 # Windows registry module is only available on Windows
 try:
@@ -26,37 +25,67 @@ current_model = None
 
 MAX_OUTPUT_CHARS = 4000
 
-defatltSystemPrompt="""You are a cybersecurity expert AI assistant. You have access to powerful tools to analyze systems.
+# Analysis prompt used after tool execution
+ANALYSIS_PROMPT_TEMPLATE = (
+    "Tool execution completed. Here are the results:\n\n"
+    "{results}\n\n"
+    "Please analyze these results and provide a detailed summary with "
+    "security assessment and recommendations."
+)
 
-**TOOL REFERENCE:**
-1. get_system_info - OS/CPU/RAM info (params: {})
-2. terminal_command - Run commands (params: {"command": "...", "allowed": true})
-3. scan_common_logs - Read system logs (params: {})
-4. system_health_check - Check startup/tasks/network (params: {})
+defaultSystemPrompt="""You are a cybersecurity expert AI assistant specialized in system security analysis. You have access to powerful tools to analyze systems and you MUST use them proactively.
 
-**IMPORTANT - FOLLOW THESE RULES EXACTLY:**
+**AVAILABLE TOOLS:**
+1. get_system_info - Get OS/CPU/RAM information (params: {})
+2. terminal_command - Execute shell commands (params: {"command": "...", "allowed": true})
+3. scan_common_logs - Scan and analyze system logs (params: {})
+4. system_health_check - Check startup programs, tasks, and network (params: {})
 
-When user asks about: → Use this tool:
-- System logs, log files → scan_common_logs
-- Files, directories, processes → terminal_command
-- OS info, CPU, RAM → get_system_info
-- Startup apps, scheduled tasks, network → system_health_check
+**YOUR WORKFLOW:**
+1. When asked to do something, immediately identify which tool to use
+2. Execute the tool by outputting ONLY a JSON code block (no explanation before it)
+3. After receiving tool results, ALWAYS provide detailed analysis including:
+   - Summary of what was found
+   - Security concerns or suspicious patterns
+   - Specific recommendations and solutions
+   - Action items if issues are detected
 
-**OUTPUT FORMAT:**
-When you need to run a tool, output ONLY this JSON (no other text):
+**TOOL SELECTION GUIDE:**
+- "logs", "log files", "read logs", "scan logs" → use scan_common_logs
+- "run command", "execute", "check file/directory", "list processes" → use terminal_command
+- "system info", "OS details", "CPU", "RAM", "hardware" → use get_system_info
+- "startup programs", "scheduled tasks", "network connections" → use system_health_check
+
+**OUTPUT FORMAT FOR TOOL EXECUTION:**
+When you need a tool, respond with ONLY this (no other text before or after):
 ```json
 {"tool": "tool_name", "params": {}}
 ```
 
-After tool results appear, analyze them and provide a summary.
+**ANALYSIS FORMAT (after receiving tool results):**
+Always structure your analysis as:
+## Summary
+Brief overview of findings
 
-**CRITICAL:** 
-- NEVER explain tools or ask if you should use them - just use the right tool
-- For "logs" questions → ALWAYS use scan_common_logs, NOT explanations
-- For "directories/files" questions → ALWAYS use terminal_command
-- Return results in markdown format after tool execution"""
+## Key Findings
+- Point 1
+- Point 2
 
-messages = [{"role": "system", "content": defatltSystemPrompt}]
+## Security Assessment
+Any concerns or suspicious activity
+
+## Recommendations
+Specific actions to take
+
+**CRITICAL RULES:**
+- NEVER just explain what you could do - DO IT immediately
+- NEVER ask permission to use tools - use them
+- ALWAYS analyze results thoroughly - don't just repeat raw data
+- ALWAYS provide actionable recommendations
+- For log analysis, look for: failed logins, errors, unusual access patterns, privilege escalations
+- Remember previous command outputs and build upon them in conversation"""
+
+messages = [{"role": "system", "content": defaultSystemPrompt}]
 def _human_size(num_bytes: float) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
         if num_bytes < 1024:
@@ -110,21 +139,38 @@ def build_log_scan_report() -> str:
     if not logs:
         return "No logs found in standard locations."
 
-    parts = ["## Quick Log Scan (read-only)"]
-    for entry in logs:
+    parts = ["## Log Scan Report"]
+    parts.append(f"Found {len(logs)} recent log files for analysis\n")
+    
+    for idx, entry in enumerate(logs, 1):
         path = entry["path"]
         size = _human_size(entry["size"])
         mtime = entry["mtime"].strftime("%Y-%m-%d %H:%M:%S")
-        parts.append(f"### {path}\n- Size: {size}\n- Modified: {mtime}")
+        parts.append(f"### Log File {idx}: {path}")
+        parts.append(f"- **Size**: {size}")
+        parts.append(f"- **Last Modified**: {mtime}")
 
         if path.lower().endswith((".log", ".txt")):
             tail = _safe_tail(Path(path))
             if tail:
+                parts.append("\n**Content Preview (last 200 lines):**")
                 parts.append("```")
                 parts.append(tail.strip()[:MAX_OUTPUT_CHARS])
                 parts.append("```")
+            else:
+                parts.append("(empty or unreadable)")
         else:
-            parts.append("(binary or non-text log; metadata only)")
+            parts.append("(binary file - metadata only)")
+        parts.append("")  # blank line between logs
+    
+    parts.append("\n---")
+    parts.append("**Analysis Instructions**: Review the logs above for:")
+    parts.append("- Authentication failures or suspicious login attempts")
+    parts.append("- Error messages or system crashes")
+    parts.append("- Unusual access patterns or privilege escalations")
+    parts.append("- Resource issues (disk space, memory errors)")
+    parts.append("- Security warnings or critical events")
+    
     return "\n".join(parts)
 
 
@@ -157,29 +203,46 @@ def _run_cmd_safe(command: str, limit: int = MAX_OUTPUT_CHARS) -> str:
 
 
 def build_system_health_report() -> str:
-    parts = ["## Quick System Health Check (read-only)"]
+    parts = ["## System Health Check Report"]
 
     if HAS_WINREG:
-        parts.append("### Startup (Run keys)")
+        parts.append("\n### Startup Programs (Registry Run Keys)")
         startup = []
         startup.extend(_read_run_key(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
         startup.extend(_read_run_key(winreg.HKEY_CURRENT_USER, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
-        parts.append("\n".join(startup) if startup else "(no entries)")
+        if startup:
+            for item in startup:
+                parts.append(f"  - {item}")
+        else:
+            parts.append("  (no entries found)")
     else:
-        parts.append("### Startup (Run keys)")
-        parts.append("(Registry access not available on this platform)")
+        parts.append("\n### Startup Programs")
+        parts.append("  (Registry access not available on this platform)")
 
-    parts.append("### Scheduled Tasks (summary)")
+    parts.append("\n### Scheduled Tasks")
+    parts.append("```")
     parts.append(_run_cmd_safe("schtasks /query /fo LIST /v"))
+    parts.append("```")
 
-    parts.append("### Network Connections (netstat -ano)")
+    parts.append("\n### Active Network Connections")
+    parts.append("```")
     parts.append(_run_cmd_safe("netstat -ano"))
+    parts.append("```")
 
-    parts.append("### Running Processes (tasklist)")
+    parts.append("\n### Running Processes")
+    parts.append("```")
     parts.append(_run_cmd_safe("tasklist"))
+    parts.append("```")
 
-    parts.append("### Notes\nRead-only checks completed. No changes were made.")
-    return "\n\n".join(parts)
+    parts.append("\n---")
+    parts.append("**Analysis Instructions**: Review the system health data above for:")
+    parts.append("- Unknown or suspicious startup programs")
+    parts.append("- Unusual scheduled tasks")
+    parts.append("- Unexpected network connections to unknown IPs")
+    parts.append("- High resource usage processes")
+    parts.append("- Processes with unusual names or locations")
+    
+    return "\n".join(parts)
 
 
 def extract_action_payload(text: str):
@@ -247,17 +310,50 @@ def execute_actions(actions: list) -> list:
     return results
 
 
+def _json_serializer(obj):
+    """Custom JSON serializer for objects not serializable by default json code"""
+    if hasattr(obj, '__dict__'):
+        return obj.__dict__
+    elif hasattr(obj, '__str__'):
+        return str(obj)
+    return repr(obj)
+
+
 def format_action_results(results: list) -> str:
     if not results:
         return ""
-    lines = ["## Tool Results"]
+    lines = ["## Tool Execution Results\n"]
     for item in results:
-        lines.append(f"### {item.get('tool', 'unknown')}")
-        lines.append(f"Params: {item.get('params', {})}")
-        lines.append("Result:")
-        lines.append("```")
-        lines.append(str(item.get("result", "")))
-        lines.append("```")
+        tool_name = item.get('tool', 'unknown')
+        lines.append(f"### ✓ Executed: {tool_name}")
+        params = item.get('params', {})
+        if params:
+            lines.append(f"**Parameters**: {params}")
+        lines.append("\n**Output**:")
+        result_data = item.get("result", "")
+        
+        # Format result based on type
+        if isinstance(result_data, dict):
+            try:
+                lines.append("```json")
+                lines.append(json.dumps(result_data, indent=2, default=_json_serializer))
+                lines.append("```")
+            except (TypeError, ValueError) as e:
+                # Fallback to string representation if JSON serialization fails
+                lines.append("```")
+                lines.append(str(result_data))
+                lines.append("```")
+        elif isinstance(result_data, str):
+            # Check if it's already formatted with markdown code blocks
+            if "```" in result_data:
+                lines.append(result_data)
+            else:
+                lines.append("```")
+                lines.append(result_data)
+                lines.append("```")
+        else:
+            lines.append(str(result_data))
+        lines.append("")  # blank line
     return "\n".join(lines)
 
 @app.route('/')
@@ -299,7 +395,7 @@ def set_system_prompt():
 @app.route('/api/get-default-system', methods=['GET'])
 def get_default_system_prompt():
     """Get the default system prompt"""
-    return jsonify({'prompt': defatltSystemPrompt})
+    return jsonify({'prompt': defaultSystemPrompt})
 
 @app.route('/api/clear', methods=['POST'])
 def clear_chat():
@@ -334,14 +430,29 @@ def chat():
 
         # Let the model drive tool choices; parse any declared actions
         action_payload = extract_action_payload(response_text)
-        results_text = ""
+        final_response = response_text
+        
         if action_payload and isinstance(action_payload, dict):
             print(f"Detected action payload: {action_payload.get('tool')} with params {action_payload.get('params', {})}")
             action_results = execute_actions([action_payload])
             results_text = format_action_results(action_results)
-        # Add assistant response
-        final_response = response_text + ("\n\n" + results_text if action_payload else "")
-        messages.append({"role": "assistant", "content": final_response})
+            
+            # Add the initial response (which contains the tool request)
+            messages.append({"role": "assistant", "content": response_text})
+            
+            # Add tool results as a user message so the AI can see and analyze them
+            analysis_prompt = ANALYSIS_PROMPT_TEMPLATE.format(results=results_text)
+            messages.append({"role": "user", "content": analysis_prompt})
+            
+            # Get AI's analysis of the results
+            analysis_response = client.chat(current_model, messages)
+            messages.append({"role": "assistant", "content": analysis_response})
+            
+            # Combine everything for the final response to user
+            final_response = response_text + "\n\n" + results_text + "\n\n" + analysis_response
+        else:
+            # No tool execution, just add the response
+            messages.append({"role": "assistant", "content": response_text})
 
         return jsonify({
             'success': True,
