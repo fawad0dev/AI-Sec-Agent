@@ -40,11 +40,12 @@ See [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md) for complete CLI documentation.
 
 - 🔍 **Log Analysis**: Automatically scan and analyze system logs for security issues
 - 🏥 **System Health Monitoring**: Check startup programs, scheduled tasks, and network connections
-- 💻 **Command Execution**: Run terminal commands with built-in safety controls
+- 💻 **Autonomous Command Execution**: AI intelligently decides which commands to run based on your request
 - 🧠 **Persistent Memory**: AI remembers command outputs throughout the conversation
 - 📊 **Structured Analysis**: Provides summary, findings, security assessment, and recommendations
 - 🔒 **Security-First**: Designed specifically for cybersecurity analysis and threat detection
-- 🌐 **Cross-Platform**: Automatically detects OS type (Windows, Linux, macOS) and uses appropriate commands
+- 🌐 **OS-Aware**: Automatically detects OS type (Windows, Linux, macOS) and uses appropriate commands
+- 🤖 **Intelligent Decision-Making**: AI chooses the right commands for your OS without explicit instructions
 
 ### CLI Agent Features
 - 🔐 **Security Scanning**: Log analysis, website scanning, directory scanning, system auditing
@@ -179,10 +180,46 @@ AI: [Retrieves OS, CPU, RAM details]
 
 The AI assistant will:
 1. ✅ **Act immediately** - No asking for permission, just does it
-2. ✅ **Remember context** - References previous command outputs
-3. ✅ **Analyze thoroughly** - Provides security insights, not just raw data
-4. ✅ **Give recommendations** - Actionable steps to address issues
-5. ✅ **Structure responses** - Consistent format: Summary → Findings → Assessment → Recommendations
+2. ✅ **Autonomously decide commands** - AI chooses the right commands for your OS and request
+3. ✅ **OS-aware execution** - Automatically uses Windows, Linux, or macOS appropriate commands
+4. ✅ **Remember context** - References previous command outputs
+5. ✅ **Analyze thoroughly** - Provides security insights, not just raw data
+6. ✅ **Give recommendations** - Actionable steps to address issues
+7. ✅ **Structure responses** - Consistent format: Summary → Findings → Assessment → Recommendations
+
+### How AI Decides Commands
+
+The AI is trained to autonomously select appropriate commands based on:
+- **Your Request**: Understands security tasks like "check network connections", "list processes", "find suspicious files"
+- **Current OS**: Automatically detected (Windows/Linux/macOS) and uses appropriate syntax
+- **Security Context**: Chooses commands that provide comprehensive security analysis
+
+**Examples of Autonomous Decision-Making:**
+
+```
+User: "show me running processes"
+AI decides: 
+  - Windows: tasklist
+  - Linux/macOS: ps aux
+  
+User: "check network connections"
+AI decides:
+  - Windows: netstat -ano
+  - Linux/macOS: netstat -tuln or ss -tuln
+
+User: "what's using CPU right now"
+AI decides:
+  - Windows: wmic cpu get loadpercentage
+  - Linux/macOS: top -bn1 | head -20
+
+User: "find suspicious startup programs"
+AI decides:
+  - Windows: wmic startup get caption,command
+  - Linux: systemctl list-unit-files --state=enabled
+  - macOS: launchctl list
+```
+
+No need to tell the AI which command to use - just describe what you want to know!
 
 ## Available Tools
 
@@ -249,7 +286,29 @@ ai_sec_agent.py      # Standalone CLI security automation agent
 
 ## Recent Improvements
 
-### Version 2.2 (Current)
+### Version 2.3 (Current)
+
+**Autonomous AI Command Decision-Making:**
+
+1. **Intelligent Command Selection** - AI autonomously decides which commands to run
+   - No need to specify exact commands - just describe what you want
+   - OS-aware command selection (Windows/Linux/macOS)
+   - Security-focused decision making with comprehensive examples
+   
+2. **Enhanced System Prompt** - Extensive command library built into AI
+   - Process & system monitoring commands
+   - Network analysis commands
+   - File system & security commands
+   - Log analysis commands
+   - Startup & scheduled task commands
+   - User & account information commands
+   
+3. **Natural Language Interaction** - Ask in plain English
+   - "show me running processes" → AI chooses: tasklist (Windows) or ps aux (Linux)
+   - "check network connections" → AI chooses: netstat -ano (Windows) or netstat -tuln (Linux)
+   - "find suspicious files" → AI chooses appropriate find/dir commands
+
+### Version 2.2
 
 **New CLI Security Automation Agent:**
 
