@@ -57,8 +57,6 @@ See [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md) for complete CLI documentation.
 ## Requirements
 
 ### Web Interface Requirements
-
-### Web Interface Requirements
 - Python 3.8+
 - Ollama (running locally on port 11434)
 - Required Python packages:
@@ -74,8 +72,6 @@ See [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md) for complete CLI documentation.
 - Optional: Security tools (nmap, nikto, gobuster) - can be auto-installed
 
 ## Installation
-
-### Option 1: Web Interface Setup
 
 ### Option 1: Web Interface Setup
 
@@ -153,8 +149,6 @@ For complete CLI documentation, see [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md).
 
 ### Web Interface Usage
 
-### Web Interface Usage
-
 #### Basic Commands
 
 **Scan Logs:**
@@ -229,8 +223,6 @@ The AI assistant will:
 ```
 
 For complete CLI documentation and all options, see [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md).
-
-## Architecture
 
 ## Architecture
 
