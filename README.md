@@ -1,10 +1,42 @@
 # AI Security Agent
 
-A cybersecurity-focused AI assistant that can analyze system logs, monitor system health, execute commands, and provide security recommendations. Powered by Ollama for local LLM inference.
+A cybersecurity-focused AI assistant that can analyze system logs, monitor system health, execute commands, and provide security recommendations. 
+
+**Two interfaces available:**
+1. **Web Interface** (ChatBotGUI.py) - Interactive chat-based AI assistant powered by Ollama for local LLM inference
+2. **CLI Agent** (ai_sec_agent.py) - Command-line security automation agent with comprehensive scanning and auditing capabilities
 
 **Cross-Platform Support**: Works on Windows, Linux, and macOS with automatic OS detection and platform-specific commands.
 
+## Quick Start
+
+### Web Interface (AI Chat Assistant)
+```bash
+cd src
+python ChatBotGUI.py
+# Opens browser at http://localhost:5000
+```
+
+### CLI Agent (Security Automation)
+```bash
+# System audit
+./ai_sec_agent.py --audit-system --yes
+
+# Scan logs
+./ai_sec_agent.py --scan-logs --yes
+
+# Scan website
+./ai_sec_agent.py --scan-website https://example.com
+
+# Run command with retries
+./ai_sec_agent.py --command "ps aux" --yes --retries 3
+```
+
+See [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md) for complete CLI documentation.
+
 ## Features
+
+### Web Interface Features
 
 - 🔍 **Log Analysis**: Automatically scan and analyze system logs for security issues
 - 🏥 **System Health Monitoring**: Check startup programs, scheduled tasks, and network connections
@@ -14,8 +46,19 @@ A cybersecurity-focused AI assistant that can analyze system logs, monitor syste
 - 🔒 **Security-First**: Designed specifically for cybersecurity analysis and threat detection
 - 🌐 **Cross-Platform**: Automatically detects OS type (Windows, Linux, macOS) and uses appropriate commands
 
+### CLI Agent Features
+- 🔐 **Security Scanning**: Log analysis, website scanning, directory scanning, system auditing
+- 💻 **Command Execution**: Run arbitrary commands with streaming output, retries, and safety controls
+- 📊 **Structured Reporting**: JSON reports with findings, command history, and remediation steps
+- 🔒 **Safety First**: Dangerous command blocking, explicit confirmations, legal reminders
+- 🛠️ **Tool Management**: Auto-install security tools (nmap, nikto, etc.) using OS package managers
+- 🔍 **Full Transparency**: Real-time "THINKING" statements and command output streaming
+
 ## Requirements
 
+### Web Interface Requirements
+
+### Web Interface Requirements
 - Python 3.8+
 - Ollama (running locally on port 11434)
 - Required Python packages:
@@ -24,7 +67,17 @@ A cybersecurity-focused AI assistant that can analyze system logs, monitor syste
   - psutil
 - **Supported Operating Systems**: Windows, Linux, macOS
 
+### CLI Agent Requirements
+- Python 3.7+
+- Standard library only (no external dependencies)
+- **Supported Operating Systems**: Windows, Linux, macOS
+- Optional: Security tools (nmap, nikto, gobuster) - can be auto-installed
+
 ## Installation
+
+### Option 1: Web Interface Setup
+
+### Option 1: Web Interface Setup
 
 Follow these steps to get the AI Security Agent running from clone to chat:
 
@@ -80,9 +133,29 @@ You can now interact with the AI Security Agent! Try commands like:
 - "check system health"
 - "show system information"
 
+### Option 2: CLI Agent Setup
+
+No installation needed! Just make the script executable:
+
+```bash
+chmod +x ai_sec_agent.py
+
+# Run security audit
+./ai_sec_agent.py --audit-system --yes
+
+# Get help
+./ai_sec_agent.py --help
+```
+
+For complete CLI documentation, see [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md).
+
 ## Usage
 
-### Basic Commands
+### Web Interface Usage
+
+### Web Interface Usage
+
+#### Basic Commands
 
 **Scan Logs:**
 ```
@@ -131,8 +204,37 @@ The AI assistant will:
 4. **get_system_info** - System information
    - Returns: OS, version, CPU, RAM, network status
 
+### CLI Agent Usage
+
+#### Quick Examples
+
+**Scan System Logs:**
+```bash
+./ai_sec_agent.py --scan-logs --yes
+```
+
+**Audit System Security:**
+```bash
+./ai_sec_agent.py --audit-system --yes
+```
+
+**Scan Website:**
+```bash
+./ai_sec_agent.py --scan-website https://example.com
+```
+
+**Run Commands with Retries:**
+```bash
+./ai_sec_agent.py --command "curl https://api.example.com" --yes --retries 3 --timeout 10
+```
+
+For complete CLI documentation and all options, see [AI_SEC_AGENT_CLI.md](AI_SEC_AGENT_CLI.md).
+
 ## Architecture
 
+## Architecture
+
+### Web Interface Architecture
 ```
 src/
 ├── ChatBotGUI.py    # Main Flask app with enhanced AI workflow
@@ -142,9 +244,47 @@ src/
     └── chat.html    # Web interface
 ```
 
+### CLI Agent Architecture
+```
+ai_sec_agent.py      # Standalone CLI security automation agent
+├── OSDetector       # OS and environment detection
+├── CommandRunner    # Command execution with streaming/retries
+├── ToolInstaller    # Security tool installation
+├── ReportGenerator  # JSON reports and summaries
+├── LogScanner       # Log file analysis
+└── SystemAuditor    # System security auditing
+```
+
 ## Recent Improvements
 
-### Version 2.1 (Current)
+### Version 2.2 (Current)
+
+**New CLI Security Automation Agent:**
+
+1. **Standalone Security Agent** - Complete CLI tool for security automation
+   - Run arbitrary commands with full safety controls
+   - Automatic OS detection and tool installation
+   - Comprehensive JSON reporting with findings
+   
+2. **Security Scanning Capabilities**
+   - Log scanning for suspicious patterns
+   - Website vulnerability scanning
+   - Directory scanning for suspicious files
+   - System security auditing
+   
+3. **Advanced Execution Features**
+   - Real-time command output streaming
+   - Retry logic with exponential backoff
+   - Dangerous command blocking with override options
+   - Full command history tracking with timestamps
+
+4. **Transparency and Safety**
+   - "THINKING" statements showing agent decisions
+   - Explicit consent prompts for dangerous operations
+   - Legal reminders for network scanning
+   - Comprehensive audit trail in JSON reports
+
+### Version 2.1
 
 **Enhanced tool execution and reliability:**
 
