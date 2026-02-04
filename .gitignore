@@ -36,6 +36,9 @@ ENV/
 config.json
 *.log
 
+# Report files
+report-*.json
+
 # OS
 .DS_Store
 Thumbs.db
